@@ -1,0 +1,96 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: waf
+      POSTGRES_PASSWORD: waf
+      POSTGRES_DB: waf
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waf -d waf"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  waf:
+    build: 
+      context: ./waf
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+      - "8083:8083"
+      - "8084:8084"
+      - "8085:8085"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=false
+      - POLL_INTERVAL=5
+      - MAX_CONCURRENT_REQUESTS=1000
+      - REQUEST_TIMEOUT=30
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mitmproxy:
+    build:
+      context: ./waf
+      dockerfile: Dockerfile.mitm
+    ports:
+      - "8080:8080"  # MITMProxy web interface
+      - "8888:8888"  # MITMProxy proxy port
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=true
+    depends_on:
+      - redis
+    restart: unless-stopped
+    volumes:
+      - ./waf/mitmproxy.py:/app/mitmproxy.py:ro
+
+  api:
+    build: 
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build: ./web
+    ports: 
+      - "5173:5173"
+    depends_on: [api]
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,37 @@
+# MITMProxy Dockerfile for Analysis
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    libffi-dev \
+    libssl-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install mitmproxy and dependencies
+RUN pip install --no-cache-dir \
+    mitmproxy==10.1.5 \
+    redis==5.0.1 \
+    python-dotenv==1.0.0 \
+    setuptools==69.0.3
+
+# Copy MITMProxy script
+COPY mitmproxy.py .
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash mitm
+RUN chown -R mitm:mitm /app
+USER mitm
+
+# Expose ports
+EXPOSE 8080 8888
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/ || exit 1
+
+# Run MITMProxy with web interface and script
+CMD ["mitmweb", "--web-host", "0.0.0.0", "--web-port", "8080", "--listen-port", "8888", "-s", "mitmproxy.py"]

@@ -28,7 +28,7 @@ import type { Site } from '../types/Site';
 import { fetchSites, deleteSite } from '../api/sites';
 
 type Order = 'asc' | 'desc';
-type OrderBy = keyof Omit<Site, 'xss_enabled' | 'sql_enabled'>;
+type OrderBy = keyof Omit<Site, 'id' | 'xss_enabled' | 'sql_enabled'>;
 
 function descendingComparator<T>(a: T, b: T, orderBy: keyof T) {
     if (b[orderBy] < a[orderBy]) return -1;
@@ -58,7 +58,7 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
     const [sites, setSites] = useState<Site[]>([]);
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState(true);
-    const [siteToDelete, setSiteToDelete] = useState<number | null>(null);
+    const [siteToDelete, setSiteToDelete] = useState<Site | null>(null);
     const [openDialog, setOpenDialog] = useState(false);
     const [order, setOrder] = useState<Order>('asc');
     const [orderBy, setOrderBy] = useState<OrderBy>('port');
@@ -105,13 +105,13 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
         setPage(0);
     };
 
-    const handleDelete = async (port: number) => {
+    const handleDelete = async (site: Site) => {
         try {
-            await deleteSite(port);
-            setSites(sites.filter(site => site.port !== port));
+            await deleteSite(site.port);
+            setSites(sites.filter(s => s.port !== site.port));
             setSnackbar({
                 open: true,
-                message: `Site on port ${port} has been removed.`,
+                message: `Site "${site.name}" (${site.host}:${site.port}) has been removed.`,
                 severity: 'success'
             });
         } catch (e) {
@@ -128,8 +128,8 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
         setSnackbar({ ...snackbar, open: false });
     };
 
-    const openDeleteConfirm = (port: number) => {
-        setSiteToDelete(port);
+    const openDeleteConfirm = (site: Site) => {
+        setSiteToDelete(site);
         setOpenDialog(true);
     };
 
@@ -161,7 +161,7 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
         <>
             {[...Array(rowsPerPage)].map((_, index) => (
                 <TableRow key={index}>
-                    {[...Array(7)].map((_, cellIndex) => (
+                    {[...Array(8)].map((_, cellIndex) => (
                         <TableCell key={cellIndex}>
                             <Skeleton animation="wave" />
                         </TableCell>
@@ -181,6 +181,7 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                         <TableRow>
                             {[
                                 { id: 'port' as OrderBy, label: 'Port' },
+                                { id: 'host' as OrderBy, label: 'Host' },
                                 { id: 'name' as OrderBy, label: 'Name' },
                                 { id: 'frontend_url' as OrderBy, label: 'Frontend URL' },
                                 { id: 'backend_url' as OrderBy, label: 'Backend URL' },
@@ -209,7 +210,7 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                             <LoadingRows />
                         ) : paginatedSites.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7} align="center">
+                                <TableCell colSpan={8} align="center">
                                     <Typography variant="body1" sx={{ py: 2 }}>
                                         No protected sites found
                                     </Typography>
@@ -217,8 +218,9 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                             </TableRow>
                         ) : (
                             paginatedSites.map(site => (
-                                <TableRow key={site.port}>
+                                <TableRow key={site.id}>
                                     <TableCell>{site.port}</TableCell>
+                                    <TableCell>{site.host}</TableCell>
                                     <TableCell>{site.name}</TableCell>
                                     <TableCell>{site.frontend_url}</TableCell>
                                     <TableCell>{site.backend_url}</TableCell>
@@ -228,7 +230,7 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                                         <IconButton
                                             aria-label="Delete site"
                                             color="error"
-                                            onClick={() => openDeleteConfirm(site.port)}
+                                            onClick={() => openDeleteConfirm(site)}
                                         >
                                             <DeleteIcon />
                                         </IconButton>
@@ -258,7 +260,8 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                 </DialogTitle>
                 <DialogContent>
                     <DialogContentText>
-                        Are you sure you want to delete this site? This action cannot be undone.
+                        Are you sure you want to delete the site "{siteToDelete?.name}" 
+                        ({siteToDelete?.host}:{siteToDelete?.port})? This action cannot be undone.
                     </DialogContentText>
                 </DialogContent>
                 <DialogActions>

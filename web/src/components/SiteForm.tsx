@@ -19,7 +19,9 @@ interface SiteFormProps {
 
 export function SiteForm({ onSiteAdded }: SiteFormProps) {
     const [formData, setFormData] = useState<Site>({
+        id: 0, // Will be set by backend
         port: 8081,
+        host: '',
         name: '',
         frontend_url: '',
         backend_url: '',
@@ -31,6 +33,20 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            // Validate required fields
+            if (!formData.name.trim()) {
+                throw new Error('Site name is required');
+            }
+            if (!formData.host.trim()) {
+                throw new Error('Host field is required. Please enter a domain like "api.annelik.local"');
+            }
+            if (!formData.frontend_url.trim()) {
+                throw new Error('Frontend URL is required');
+            }
+            if (!formData.backend_url.trim()) {
+                throw new Error('Backend URL is required');
+            }
+            
             // Validate port range
             if (formData.port < 1024 || formData.port > 65535) {
                 throw new Error('Port must be between 1024 and 65535');
@@ -44,14 +60,16 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                 throw new Error('Please enter valid URLs');
             }
 
-            const site = await addSite(formData);
-            console.log('Site added successfully:', site);
+            // Exclude id field for API call since it's auto-generated
+            const { id, ...siteData } = formData;
+            const site = await addSite(siteData);
             onSiteAdded();
-            console.log('onSiteAdded called');
             
             // Reset form
             setFormData({
+                id: 0,
                 port: 8081,
+                host: '',
                 name: '',
                 frontend_url: '',
                 backend_url: '',
@@ -60,15 +78,24 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
             });
             setError('');
         } catch (e) {
+            console.error('Form submission error:', e);
             setError(e instanceof Error ? e.message : 'Failed to add site');
         }
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, value, type, checked } = e.target;
+        const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
-            [name]: type === 'checkbox' ? checked : value
+            [name]: name === 'port' ? parseInt(value) || 0 : value
+        }));
+    };
+
+    const handleSwitchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const { name, checked } = e.target;
+        setFormData(prev => ({
+            ...prev,
+            [name]: checked
         }));
     };
 
@@ -109,6 +136,18 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                     <TextField
                         required
                         fullWidth
+                        label="Host"
+                        name="host"
+                        value={formData.host}
+                        onChange={handleChange}
+                        placeholder="api.annelik.local or *.annelik.local"
+                        helperText="Domain to match (REQUIRED - supports wildcards like *.annelik.local)"
+                        error={formData.host.trim() === ''}
+                    />
+
+                    <TextField
+                        required
+                        fullWidth
                         label="Frontend URL"
                         name="frontend_url"
                         value={formData.frontend_url}
@@ -131,7 +170,7 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                             control={
                                 <Switch
                                     checked={formData.xss_enabled}
-                                    onChange={handleChange}
+                                    onChange={handleSwitchChange}
                                     name="xss_enabled"
                                 />
                             }
@@ -142,7 +181,7 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                             control={
                                 <Switch
                                     checked={formData.sql_enabled}
-                                    onChange={handleChange}
+                                    onChange={handleSwitchChange}
                                     name="sql_enabled"
                                 />
                             }

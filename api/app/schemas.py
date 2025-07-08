@@ -3,6 +3,7 @@ from typing import Optional
 
 class SiteBase(BaseModel):
     name: str
+    host: str  # Host header to match (e.g., "api.example.com" or "*.example.com")
     frontend_url: HttpUrl
     backend_url: HttpUrl
     xss_enabled: bool = True
@@ -12,6 +13,7 @@ class SiteCreate(SiteBase):
     port: conint(ge=1024, le=65535)  # Port range validation
 
 class SiteResponse(SiteBase):
+    id: int
     port: int
     
     @field_validator('frontend_url', 'backend_url', mode='before')

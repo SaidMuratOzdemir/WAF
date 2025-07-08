@@ -6,6 +6,7 @@ from typing import Dict, Any
 import asyncio
 import redis.asyncio as redis
 import os
+from collections import deque
 
 # MITMProxy addon for WAF traffic analysis (NO FILTERING - ANALYSIS ONLY)
 logging.basicConfig(level=logging.INFO)
@@ -20,7 +21,7 @@ class WAFAnalysisAddon:
     def __init__(self):
         self.request_count = 0
         self.blocked_patterns = []
-        self.traffic_log = []
+        self.traffic_log = deque(maxlen=1000)  # Fixed size queue
         
     def request(self, flow: http.HTTPFlow) -> None:
         """Analyze incoming requests - NO BLOCKING."""
@@ -49,10 +50,8 @@ class WAFAnalysisAddon:
         # Log to file or send to monitoring system
         logger.info(f"[ANALYSIS] {flow.request.method} {flow.request.pretty_url} from {client_ip}")
         
-        # Store in traffic log (keep last 1000 requests)
+        # Store in traffic log (automatic size management with deque)
         self.traffic_log.append(request_data)
-        if len(self.traffic_log) > 1000:
-            self.traffic_log.pop(0)
 
     def response(self, flow: http.HTTPFlow) -> None:
         """Analyze responses."""

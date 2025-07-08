@@ -63,43 +63,39 @@ async def create_site(
     _: dict = Depends(verify_token)
 ):
     """Add a new protected site."""
-    # Check if port, frontend_url, or backend_url are already in use
+    # Check if port+host combination already exists
     result = await session.execute(
         select(Site).filter(
-            or_(
-                Site.port == site.port,
-                Site.frontend_url == str(site.frontend_url),
-                Site.backend_url == str(site.backend_url)
-            )
+            Site.port == site.port,
+            Site.host == site.host
         )
     )
     existing_site = result.scalars().first()
     if existing_site:
-        if existing_site.port == site.port:
-            detail = f"Port {site.port} is already in use"
-        elif existing_site.frontend_url == str(site.frontend_url):
-            detail = f"Frontend URL {site.frontend_url} is already in use"
-        else:
-            detail = f"Backend URL {site.backend_url} is already in use"
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=detail
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Site with port {site.port} and host '{site.host}' already exists"
         )
     
-    # Convert HttpUrl objects to strings for database storage
-    site_data = site.model_dump()
-    site_data['frontend_url'] = str(site_data['frontend_url'])
-    site_data['backend_url'] = str(site_data['backend_url'])
+    # Create new site
+    new_site = Site(
+        port=site.port,
+        host=site.host,
+        name=site.name,
+        frontend_url=str(site.frontend_url),
+        backend_url=str(site.backend_url),
+        xss_enabled=site.xss_enabled,
+        sql_enabled=site.sql_enabled
+    )
     
-    db_site = Site(**site_data)
-    session.add(db_site)
+    session.add(new_site)
     await session.commit()
-    await session.refresh(db_site)
+    await session.refresh(new_site)
     
     # Notify WAF about configuration change
     await publish_config_update(site.port)
     
-    return db_site
+    return new_site
 
 @app.delete("/sites/{port}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_site(
@@ -107,7 +103,7 @@ async def delete_site(
     session: AsyncSession = Depends(get_session),
     _: dict = Depends(verify_token)
 ):
-    """Delete a protected site."""
+    """Delete a protected site by port."""
     result = await session.execute(select(Site).filter(Site.port == port))
     site = result.scalar_one_or_none()
     

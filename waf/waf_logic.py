@@ -1,6 +1,6 @@
 import re
 import asyncio
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from aiohttp import web
 from database import Site
 from client import Client
@@ -43,7 +43,7 @@ SQL_PATTERNS = [
     r'\bxp_\w+'
 ]
 
-async def is_malicious_content(content: str, xss_enabled: bool = True, sql_enabled: bool = True) -> tuple[bool, str]:
+async def is_malicious_content(content: str, xss_enabled: bool = True, sql_enabled: bool = True) -> Tuple[bool, str]:
     """
     Check if content contains malicious patterns.
     Returns (is_malicious, attack_type)
@@ -69,14 +69,20 @@ async def is_malicious_content(content: str, xss_enabled: bool = True, sql_enabl
     
     return False, ""
 
-async def is_malicious_request(request: web.Request, site: Site) -> tuple[bool, str]:
+async def is_malicious_request(request: web.Request, site: Site, body_bytes: bytes = None) -> Tuple[bool, str]:
     """
     Comprehensive request analysis for malicious content.
     Returns (is_malicious, attack_type)
     """
     try:
-        # Get request body
-        body = await request.text()
+        # Get request body - use provided bytes or read if not provided
+        if body_bytes is None:
+            body_bytes = await request.read()
+        
+        try:
+            body = body_bytes.decode('utf-8', errors='ignore')
+        except:
+            body = ""
         
         # Check body content
         is_mal, attack_type = await is_malicious_content(

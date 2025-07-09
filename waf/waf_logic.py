@@ -6,41 +6,27 @@ from database import Site
 from client import Client
 import logging
 
-# Suspicious patterns for different attack types
+# Basit ve etkili güvenlik pattern'ları
 XSS_PATTERNS = [
-    r'<script[^>]*>.*?</script>',
-    r'javascript:',
-    r'on\w+\s*=',
-    r'<iframe[^>]*>',
-    r'<object[^>]*>',
-    r'<embed[^>]*>',
-    r'%3cscript%3e',
-    r'&lt;script&gt;',
-    r'eval\(',
-    r'alert\(',
-    r'document\.cookie',
-    r'document\.write'
+    r'<script\b',                    # <script başlangıcı
+    r'</script>',                   # </script> kapanışı
+    r'javascript\s*:',              # javascript: protokolü
+    r'on\w+\s*=\s*["\'][^"\']*["\']', # onclick="..." gibi event handler'lar
+    r'<iframe\b',                   # iframe başlangıcı
+    r'document\.cookie',            # Cookie erişimi
+    r'alert\s*\(',                  # alert() çağrısı
+    r'eval\s*\(',                   # eval() çağrısı
 ]
 
 SQL_PATTERNS = [
-    r'\bunion\b.*\bselect\b',
-    r'\bselect\b.*\bfrom\b',
-    r'\binsert\b.*\binto\b',
-    r'\bupdate\b.*\bset\b',
-    r'\bdelete\b.*\bfrom\b',
-    r'\bdrop\b.*\btable\b',
-    r'\bcreate\b.*\btable\b',
-    r'\balter\b.*\btable\b',
-    r"'.*or.*'.*'",
-    r'".*or.*".*"',
-    r'\bor\b.*1\s*=\s*1',
-    r'\band\b.*1\s*=\s*1',
-    r'--',
-    r'/\*.*\*/',
-    r'\bexec\(',
-    r'\bexecute\(',
-    r'\bsp_\w+',
-    r'\bxp_\w+'
+    r'\bunion\s+select\b',          # UNION SELECT saldırısı
+    r'\bor\s+1\s*=\s*1\b',         # OR 1=1 classic injection
+    r'\band\s+1\s*=\s*1\b',        # AND 1=1 injection
+    r"'\s*or\s*'",                 # 'or' string injection
+    r'"\s*or\s*"',                 # "or" string injection
+    r';\s*(drop|delete|update|insert)\b', # Destructive commands
+    r'--\s',                        # SQL comment (with space)
+    r'/\*.*\*/',                    # SQL block comment
 ]
 
 async def is_malicious_content(content: str, xss_enabled: bool = True, sql_enabled: bool = True) -> Tuple[bool, str]:

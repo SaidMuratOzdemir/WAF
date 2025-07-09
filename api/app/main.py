@@ -4,14 +4,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 from typing import List
 import os
+import redis.asyncio as redis
 
 from .database import get_session
 from .models import Site as SiteModel
 from .schemas import SiteCreate, Site as SiteSchema
 from .auth import verify_token, create_access_token, TokenResponse, authenticate_user
-from .redis_service import publish_config_update
+from .redis_service import publish_config_update, init_redis, close_redis
 
 app = FastAPI(title="WAF Admin API")
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize Redis connection on startup."""
+    await init_redis()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Close Redis connection on shutdown."""
+    await close_redis()
 
 # CORS configuration
 app.add_middleware(
@@ -141,7 +152,150 @@ async def delete_site(
     # Notify WAF about configuration change
     await publish_config_update(port)
 
+@app.put("/sites/{site_id}", response_model=SiteSchema)
+async def update_site(
+    site_id: int,
+    site_update: SiteCreate,
+    session: AsyncSession = Depends(get_session),
+    _: dict = Depends(verify_token)
+):
+    """Update an existing protected site."""
+    # Get the existing site
+    result = await session.execute(select(SiteModel).filter(SiteModel.id == site_id))
+    existing_site = result.scalar_one_or_none()
+    
+    if not existing_site:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Site with ID {site_id} not found"
+        )
+    
+    # Check if the new port+host combination conflicts with another site
+    if (existing_site.port != site_update.port or existing_site.host != site_update.host):
+        conflict_result = await session.execute(
+            select(SiteModel).filter(
+                SiteModel.port == site_update.port,
+                SiteModel.host == site_update.host,
+                SiteModel.id != site_id  # Exclude current site
+            )
+        )
+        conflicting_site = conflict_result.scalars().first()
+        if conflicting_site:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Site with port {site_update.port} and host '{site_update.host}' already exists"
+            )
+    
+    # Store old port for notification
+    old_port = existing_site.port
+    
+    # Update the site
+    existing_site.port = site_update.port
+    existing_site.host = site_update.host
+    existing_site.name = site_update.name
+    existing_site.frontend_url = str(site_update.frontend_url)
+    existing_site.backend_url = str(site_update.backend_url)
+    existing_site.xss_enabled = site_update.xss_enabled
+    existing_site.sql_enabled = site_update.sql_enabled
+    existing_site.vt_enabled = site_update.vt_enabled
+    
+    await session.commit()
+    await session.refresh(existing_site)
+    
+    # Notify WAF about configuration changes
+    await publish_config_update(old_port)  # Old port
+    if old_port != site_update.port:
+        await publish_config_update(site_update.port)  # New port if changed
+    
+    return existing_site
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+@app.get("/vt-cache-stats")
+async def get_vt_cache_stats(
+    _: dict = Depends(verify_token)
+):
+    """Get VirusTotal cache statistics."""
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        
+        # Direct Redis connection for cache stats
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        await redis_client.ping()
+        
+        # Get today's cache entries
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        pattern = f"vt_ip_cache:{today}:*"
+        keys = await redis_client.keys(pattern)
+        
+        stats = {
+            "date": today,
+            "total_entries": len(keys),
+            "malicious_count": 0,
+            "clean_count": 0,
+            "error_count": 0
+        }
+        
+        # Count malicious vs clean
+        for key in keys:
+            try:
+                data = await redis_client.get(key)
+                if data:
+                    import json
+                    entry_data = json.loads(data)
+                    if entry_data.get('is_malicious'):
+                        stats["malicious_count"] += 1
+                    else:
+                        stats["clean_count"] += 1
+            except:
+                stats["error_count"] += 1
+        
+        await redis_client.close()
+        return stats
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting cache stats: {str(e)}"
+        )
+
+@app.post("/vt-cache-cleanup")
+async def cleanup_vt_cache(
+    _: dict = Depends(verify_token)
+):
+    """Manually trigger VirusTotal cache cleanup."""
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        
+        # Direct Redis connection for cleanup
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        await redis_client.ping()
+        
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        yesterday = today - timedelta(days=1)
+        
+        # Clean yesterday's cache
+        yesterday_pattern = f"vt_ip_cache:{yesterday.strftime('%Y-%m-%d')}:*"
+        yesterday_keys = await redis_client.keys(yesterday_pattern)
+        
+        cleaned_count = 0
+        if yesterday_keys:
+            cleaned_count = await redis_client.delete(*yesterday_keys)
+        
+        await redis_client.close()
+        
+        return {
+            "message": "Cache cleanup completed",
+            "cleaned_entries": cleaned_count
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error cleaning cache: {str(e)}"
+        )

@@ -29,7 +29,7 @@ EXPOSE 8081 8082 8083 8084 8085
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import aiohttp; import asyncio; asyncio.run(aiohttp.ClientSession().get('http://localhost:8081/waf/health').close())" || exit 1
+    CMD python -c "import aiohttp; import asyncio; async def check(): async with aiohttp.ClientSession() as session: async with session.get('http://localhost:8081/waf/health') as response: assert response.status == 200; asyncio.run(check())" || exit 1
 
 # Run the WAF
 CMD ["python", "waf.py"]

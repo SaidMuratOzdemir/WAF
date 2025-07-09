@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { SiteList, SiteListRef } from './components/SiteList';
 import { SiteForm } from './components/SiteForm';
 import { Login } from './components/Login';
+import VirusTotalStats from './components/VirusTotalStats';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -42,6 +43,9 @@ function Dashboard() {
       </AppBar>
       
       <Container>
+        <Box sx={{ mb: 4 }}>
+          <VirusTotalStats />
+        </Box>
         <SiteForm onSiteAdded={handleSiteAdded} />
         <Box sx={{ mt: 4 }}>
           <SiteList ref={siteListRef} />

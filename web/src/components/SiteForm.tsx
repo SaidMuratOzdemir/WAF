@@ -26,7 +26,8 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
         frontend_url: '',
         backend_url: '',
         xss_enabled: true,
-        sql_enabled: true
+        sql_enabled: true,
+        vt_enabled: false
     });
     const [error, setError] = useState<string>('');
 
@@ -74,7 +75,8 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                 frontend_url: '',
                 backend_url: '',
                 xss_enabled: true,
-                sql_enabled: true
+                sql_enabled: true,
+                vt_enabled: false
             });
             setError('');
         } catch (e) {
@@ -186,6 +188,17 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                                 />
                             }
                             label="SQL Injection Protection"
+                        />
+
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={formData.vt_enabled}
+                                    onChange={handleSwitchChange}
+                                    name="vt_enabled"
+                                />
+                            }
+                            label="Enable VirusTotal Scan"
                         />
                     </Box>
 

@@ -2,26 +2,22 @@ from pydantic import BaseModel, HttpUrl, conint, field_validator
 from typing import Optional
 
 class SiteBase(BaseModel):
+    port: int
     name: str
     host: str  # Host header to match (e.g., "api.example.com" or "*.example.com")
     frontend_url: HttpUrl
     backend_url: HttpUrl
     xss_enabled: bool = True
     sql_enabled: bool = True
+    vt_enabled: bool = False
+
 
 class SiteCreate(SiteBase):
-    port: conint(ge=1024, le=65535)  # Port range validation
+    pass  # Inherits all fields from SiteBase including port validation
 
-class SiteResponse(SiteBase):
+
+class Site(SiteBase):
     id: int
-    port: int
-    
-    @field_validator('frontend_url', 'backend_url', mode='before')
-    @classmethod
-    def validate_urls(cls, v):
-        if isinstance(v, str):
-            return v
-        return str(v)
 
     class Config:
         from_attributes = True

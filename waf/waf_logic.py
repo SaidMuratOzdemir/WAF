@@ -96,6 +96,7 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
             request.path, site.xss_enabled, site.sql_enabled
         )
         if is_mal:
+            logging.warning(f"Malicious content detected in URL path '{request.path}'. Attack type: {attack_type}")
             return True, attack_type
         
         # Check query string
@@ -103,30 +104,35 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
             str(request.query_string), site.xss_enabled, site.sql_enabled
         )
         if is_mal:
+            logging.warning(f"Malicious content detected in query string '{request.query_string}'. Attack type: {attack_type}")
             return True, attack_type
         
         # Check headers
         for header_name, header_value in request.headers.items():
             # Skip common headers that might contain false positives
-            if header_name.lower() in ['user-agent', 'accept', 'accept-encoding', 'accept-language']:
+            if header_name.lower() in ['user-agent', 'accept', 'accept-encoding', 'accept-language', 'cookie', 'connection', 'host', 'cache-control', 'upgrade-insecure-requests', 'sec-ch-ua', 'sec-ch-ua-mobile', 'sec-ch-ua-platform', 'sec-fetch-site', 'sec-fetch-mode', 'sec-fetch-dest', 'accept-language']:
                 continue
                 
             is_mal, attack_type = await is_malicious_content(
                 f"{header_name}: {header_value}", site.xss_enabled, site.sql_enabled
             )
             if is_mal:
+                logging.warning(f"Malicious content detected in header '{header_name}'. Attack type: {attack_type}")
                 return True, attack_type
         
         # Check client IP using VirusTotal (if enabled)
-        client_ip = request.remote
-        if client_ip and client_ip not in ['127.0.0.1', 'localhost']:
-            try:
-                vt_client = Client(client_ip)
-                if vt_client.is_ip_malicious():
-                    logging.warning(f"Malicious IP detected: {client_ip}")
-                    return True, "MALICIOUS_IP"
-            except Exception as e:
-                logging.debug(f"VirusTotal check failed for IP {client_ip}: {e}")
+        if site.vt_enabled:
+            client_ip = request.remote
+            if client_ip and client_ip not in ['127.0.0.1', 'localhost']:
+                try:
+                    vt_client = Client(client_ip)
+                    # Perform the check but don't block, only log if malicious
+                    if vt_client.is_ip_malicious():
+                        logging.warning(f"Malicious IP detected via VirusTotal: {client_ip}")
+                    # If the check fails (e.g., API error), log it but do not block the request.
+                    # This makes the WAF resilient to VirusTotal outages.
+                except Exception as e:
+                    logging.warning(f"VirusTotal check failed for IP {client_ip}, but allowing request. Error: {e}")
         
         return False, ""
         

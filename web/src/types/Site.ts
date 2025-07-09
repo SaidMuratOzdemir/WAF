@@ -7,6 +7,7 @@ export interface Site {
     backend_url: string;
     xss_enabled: boolean;
     sql_enabled: boolean;
+    vt_enabled: boolean;
 }
 
 export interface SiteCreate {
@@ -17,4 +18,5 @@ export interface SiteCreate {
     backend_url: string;
     xss_enabled: boolean;
     sql_enabled: boolean;
+    vt_enabled: boolean;
 }

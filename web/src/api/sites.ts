@@ -61,6 +61,24 @@ export const addSite = async (site: SiteCreate): Promise<Site> => {
     return response.json();
 };
 
+export const updateSite = async (id: number, site: Partial<Omit<Site, 'id'>>): Promise<Site> => {
+    const response = await fetch(`${API_URL}/sites/${id}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(site),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to update site');
+    }
+
+    return response.json();
+};
+
 export const deleteSite = async (port: number): Promise<void> => {
     const response = await fetch(`${API_URL}/sites/${port}`, {
         method: 'DELETE',

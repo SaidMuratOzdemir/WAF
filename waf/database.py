@@ -21,6 +21,7 @@ class Site(Base):
     backend_url = Column(String, nullable=False)
     xss_enabled = Column(Boolean, default=True)
     sql_enabled = Column(Boolean, default=True)
+    vt_enabled = Column(Boolean, default=False)  # Add this line
     
     # Composite unique constraint for port+host combination
     __table_args__ = (

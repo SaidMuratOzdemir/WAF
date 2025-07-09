@@ -6,8 +6,8 @@ from typing import List
 import os
 
 from .database import get_session
-from .models import Site
-from .schemas import SiteCreate, SiteResponse
+from .models import Site as SiteModel
+from .schemas import SiteCreate, Site as SiteSchema
 from .auth import verify_token, create_access_token, TokenResponse, authenticate_user
 from .redis_service import publish_config_update
 
@@ -46,17 +46,38 @@ async def login(
     access_token = create_access_token(data={"sub": username, "admin": True})
     return TokenResponse(access_token=access_token)
 
-@app.get("/sites", response_model=List[SiteResponse])
+@app.get("/sites", response_model=List[SiteSchema])
 async def list_sites(
     session: AsyncSession = Depends(get_session),
     _: dict = Depends(verify_token)
 ):
     """List all protected sites."""
-    result = await session.execute(select(Site))
+    result = await session.execute(select(SiteModel))
     sites = result.scalars().all()
-    return sites
+    
+    # Debug: Print raw data from database
+    for site in sites:
+        print(f"Raw site from DB: id={site.id}, port={site.port}, name={site.name}")
+    
+    # Manual conversion to include port field
+    site_dicts = []
+    for site in sites:
+        site_dict = {
+            "id": site.id,
+            "port": site.port,
+            "name": site.name,
+            "host": site.host,
+            "frontend_url": site.frontend_url,
+            "backend_url": site.backend_url,
+            "xss_enabled": site.xss_enabled,
+            "sql_enabled": site.sql_enabled,
+            "vt_enabled": site.vt_enabled
+        }
+        site_dicts.append(site_dict)
+    
+    return site_dicts
 
-@app.post("/sites", response_model=SiteResponse, status_code=status.HTTP_201_CREATED)
+@app.post("/sites", response_model=SiteSchema, status_code=status.HTTP_201_CREATED)
 async def create_site(
     site: SiteCreate,
     session: AsyncSession = Depends(get_session),
@@ -65,9 +86,9 @@ async def create_site(
     """Add a new protected site."""
     # Check if port+host combination already exists
     result = await session.execute(
-        select(Site).filter(
-            Site.port == site.port,
-            Site.host == site.host
+        select(SiteModel).filter(
+            SiteModel.port == site.port,
+            SiteModel.host == site.host
         )
     )
     existing_site = result.scalars().first()
@@ -78,14 +99,15 @@ async def create_site(
         )
     
     # Create new site
-    new_site = Site(
+    new_site = SiteModel(
         port=site.port,
         host=site.host,
         name=site.name,
         frontend_url=str(site.frontend_url),
         backend_url=str(site.backend_url),
         xss_enabled=site.xss_enabled,
-        sql_enabled=site.sql_enabled
+        sql_enabled=site.sql_enabled,
+        vt_enabled=site.vt_enabled
     )
     
     session.add(new_site)
@@ -104,7 +126,7 @@ async def delete_site(
     _: dict = Depends(verify_token)
 ):
     """Delete a protected site by port."""
-    result = await session.execute(select(Site).filter(Site.port == port))
+    result = await session.execute(select(SiteModel).filter(SiteModel.port == port))
     site = result.scalar_one_or_none()
     
     if not site:

@@ -23,9 +23,10 @@ import {
     Snackbar,
     Skeleton,
 } from '@mui/material';
-import { Delete as DeleteIcon } from '@mui/icons-material';
+import { Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material';
 import type { Site } from '../types/Site';
 import { fetchSites, deleteSite } from '../api/sites';
+import EditSiteModal from './EditSiteModal';
 
 type Order = 'asc' | 'desc';
 type OrderBy = keyof Omit<Site, 'id' | 'xss_enabled' | 'sql_enabled'>;
@@ -59,7 +60,9 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
     const [error, setError] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [siteToDelete, setSiteToDelete] = useState<Site | null>(null);
+    const [siteToEdit, setSiteToEdit] = useState<Site | null>(null);
     const [openDialog, setOpenDialog] = useState(false);
+    const [editModalOpen, setEditModalOpen] = useState(false);
     const [order, setOrder] = useState<Order>('asc');
     const [orderBy, setOrderBy] = useState<OrderBy>('port');
     const [page, setPage] = useState(0);
@@ -131,6 +134,20 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
     const openDeleteConfirm = (site: Site) => {
         setSiteToDelete(site);
         setOpenDialog(true);
+    };
+
+    const openEditModal = (site: Site) => {
+        setSiteToEdit(site);
+        setEditModalOpen(true);
+    };
+
+    const handleEditSuccess = () => {
+        setSnackbar({
+            open: true,
+            message: 'Site successfully updated!',
+            severity: 'success'
+        });
+        loadSites(); // Refresh the list
     };
 
     useImperativeHandle(ref, () => ({
@@ -228,6 +245,14 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                                     <TableCell>{site.sql_enabled ? 'Yes' : 'No'}</TableCell>
                                     <TableCell>
                                         <IconButton
+                                            aria-label="Edit site"
+                                            color="primary"
+                                            onClick={() => openEditModal(site)}
+                                            sx={{ mr: 1 }}
+                                        >
+                                            <EditIcon />
+                                        </IconButton>
+                                        <IconButton
                                             aria-label="Delete site"
                                             color="error"
                                             onClick={() => openDeleteConfirm(site)}
@@ -277,6 +302,13 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                     </Button>
                 </DialogActions>
             </Dialog>
+
+            <EditSiteModal
+                open={editModalOpen}
+                site={siteToEdit}
+                onClose={() => setEditModalOpen(false)}
+                onSuccess={handleEditSuccess}
+            />
 
             <Snackbar 
                 open={snackbar.open} 

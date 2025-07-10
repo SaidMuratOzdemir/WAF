@@ -1,6 +1,7 @@
 import redis.asyncio as redis
 import os
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -39,3 +40,54 @@ async def close_redis():
     if redis_client:
         await redis_client.close()
         redis_client = None
+
+async def get_banned_ips() -> list:
+    """Get all banned IPs from Redis"""
+    global redis_client
+    if not redis_client:
+        await init_redis()
+    keys = await redis_client.keys('banned_ip:*')
+    ips = []
+    for key in keys:
+        if isinstance(key, bytes):
+            key = key.decode('utf-8')
+        ip = key.split(':', 1)[1]
+        ips.append({
+            'ip': ip,
+            'banned_at': await redis_client.get(f'banned_ip:{ip}')
+        })
+    return ips
+
+async def get_clean_ips() -> list:
+    """Get all clean (whitelisted) IPs from Redis"""
+    global redis_client
+    if not redis_client:
+        await init_redis()
+    keys = await redis_client.keys('clean_ip:*')
+    ips = []
+    for key in keys:
+        if isinstance(key, bytes):
+            key = key.decode('utf-8')
+        ip = key.split(':', 1)[1]
+        ips.append({
+            'ip': ip,
+            'added_at': await redis_client.get(f'clean_ip:{ip}')
+        })
+    return ips
+
+async def ban_ip(ip: str) -> bool:
+    """Manually ban an IP"""
+    global redis_client
+    if not redis_client:
+        await init_redis()
+    await redis_client.set(f'banned_ip:{ip}', str(datetime.now()))
+    await redis_client.delete(f'clean_ip:{ip}')  # Remove from clean list if exists
+    return True
+
+async def unban_ip(ip: str) -> bool:
+    """Remove IP from banned list"""
+    global redis_client
+    if not redis_client:
+        await init_redis()
+    return await redis_client.delete(f'banned_ip:{ip}') > 0
+

@@ -16,8 +16,11 @@ import {
     Refresh as RefreshIcon,
     DeleteSweep as CleanupIcon,
     CheckCircle as CheckIcon,
-    Error as ErrorIcon
+    Error as ErrorIcon,
+    ManageAccounts as ManageIcon
 } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
+export const API_URL = '/api';
 
 interface CacheStats {
     date: string;
@@ -40,13 +43,15 @@ const VirusTotalStats = () => {
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
 
+    const navigate = useNavigate();
+
     const fetchStats = async () => {
         setLoading(true);
         setError(null);
         
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('/api/vt-cache-stats', {
+            const response =await fetch(`${API_URL}/vt-cache-stats`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -70,7 +75,7 @@ const VirusTotalStats = () => {
         
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('/api/vt-cache-cleanup', {
+            const response = await fetch(`${API_URL}/vt-cache-cleanup`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -92,6 +97,10 @@ const VirusTotalStats = () => {
         } finally {
             setCleanupLoading(false);
         }
+    };
+
+    const handleIPManagement = () => {
+        navigate('/ip-management');
     };
 
     useEffect(() => {
@@ -235,6 +244,35 @@ const VirusTotalStats = () => {
                                 Hatalı Giriş
                             </Typography>
                         </Box>
+                    </Box>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    <Box display="flex" gap={2} justifyContent="center">
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<ManageIcon />}
+                            onClick={handleIPManagement}
+                        >
+                            IP Yönetimi
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="secondary"
+                            startIcon={<RefreshIcon />}
+                            onClick={fetchStats}
+                        >
+                            Yenile
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            color="error"
+                            startIcon={<CleanupIcon />}
+                            onClick={handleCleanup}
+                        >
+                            Cache Temizle
+                        </Button>
                     </Box>
 
                     <Divider sx={{ my: 2 }} />

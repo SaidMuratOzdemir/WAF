@@ -10,6 +10,8 @@ import {
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 
+export const API_URL = '/api';
+
 export function Login() {
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -27,7 +29,7 @@ export function Login() {
             formData.append('username', username);
             formData.append('password', password);
 
-            const response = await fetch('/api/login', {
+            const response = await fetch(`${API_URL}/login`, {
                 method: 'POST',
                 body: formData
             });

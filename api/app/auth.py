@@ -24,6 +24,11 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
+class CurrentUser(BaseModel):
+    id: int
+    username: str
+    is_admin: bool
+
 async def authenticate_user(username: str, password: str, session: AsyncSession) -> Optional[User]:
     result = await session.execute(select(User).filter(User.username == username))
     user = result.scalar_one_or_none()
@@ -51,3 +56,47 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) 
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+    session: AsyncSession = Depends(get_session)
+) -> CurrentUser:
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials"
+            )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials"
+        )
+
+    async with session as s:
+        result = await s.execute(select(User).where(User.username == username))
+        user = result.scalar_one_or_none()
+        
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found"
+        )
+
+    return CurrentUser(
+        id=user.id,
+        username=user.username,
+        is_admin=user.is_admin
+    )
+
+async def get_current_admin_user(
+    current_user: CurrentUser = Depends(get_current_user)
+) -> CurrentUser:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform this action"
+        )
+    return current_user

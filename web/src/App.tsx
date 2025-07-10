@@ -1,4 +1,5 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, lazy, Suspense } from 'react';
+const IPManagement = lazy(() => import('./components/IPManagement'));
 import { Container, AppBar, Toolbar, Typography, Box, Button } from '@mui/material';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { SiteList, SiteListRef } from './components/SiteList';
@@ -66,6 +67,16 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ip-management"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<div>Yükleniyor...</div>}>
+                  <IPManagement />
+                </Suspense>
               </ProtectedRoute>
             }
           />

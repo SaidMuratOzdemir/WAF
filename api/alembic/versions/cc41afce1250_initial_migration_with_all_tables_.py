@@ -1,8 +1,8 @@
-"""Add admin user seed data
+"""initial migration with all tables including malicious_patterns
 
-Revision ID: d71fdf48bfad
-Revises: 2ea97d00082f
-Create Date: 2025-07-08 09:07:27.559708
+Revision ID: cc41afce1250
+Revises: 
+Create Date: 2025-07-14 11:28:47.546375
 
 """
 from typing import Sequence, Union
@@ -12,8 +12,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'd71fdf48bfad'
-down_revision: Union[str, None] = '2ea97d00082f'
+revision: str = 'cc41afce1250'
+down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

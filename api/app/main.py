@@ -216,18 +216,21 @@ async def get_vt_cache_stats():
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         client = redis.from_url(redis_url, decode_responses=True)
         await client.ping()
-        today = datetime.now().strftime("%Y-%m-%d")
-        pattern = f"vt_ip_cache:{today}:*"
-        keys = await client.keys(pattern)
-        stats = {"date": today, "total_entries": len(keys), "malicious_count": 0, "clean_count": 0, "error_count": 0}
+        keys = await client.keys('ip_info:*')
+        stats = {"total_entries": 0, "malicious_count": 0, "clean_count": 0, "error_count": 0}
         for key in keys:
             try:
                 entry = await client.get(key)
                 if entry:
                     import json
                     data = json.loads(entry)
-                    if data.get('is_malicious'): stats['malicious_count'] += 1
-                    else: stats['clean_count'] += 1
+                    vt = data.get('vt')
+                    if vt:
+                        stats['total_entries'] += 1
+                        if vt.get('is_malicious'):
+                            stats['malicious_count'] += 1
+                        else:
+                            stats['clean_count'] += 1
             except:
                 stats['error_count'] += 1
         await client.close()
@@ -242,20 +245,27 @@ async def cleanup_vt_cache():
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         client = redis.from_url(redis_url, decode_responses=True)
         await client.ping()
-        today = datetime.now().date()
-        yesterday = today - timedelta(days=1)
-        pattern = f"vt_ip_cache:{yesterday.strftime('%Y-%m-%d')}:*"
-        keys = await client.keys(pattern)
+        keys = await client.keys('ip_info:*')
         cleaned = 0
-        if keys: cleaned = await client.delete(*keys)
+        for key in keys:
+            entry = await client.get(key)
+            if entry:
+                import json
+                try:
+                    data = json.loads(entry)
+                    if 'vt' in data:
+                        del data['vt']
+                        await client.set(key, json.dumps(data))
+                        cleaned += 1
+                except Exception:
+                    continue
         await client.close()
         return {"message": "Cache cleanup completed", "cleaned_entries": cleaned}
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error cleaning cache: {e}")
 
-@api_router.get("/ips/banned", response_model=List[dict])
+@api_router.get("/banned-ips")
 async def list_banned_ips(current_user = Depends(get_current_admin_user)):
-    """List all banned IPs."""
     return await get_banned_ips()
 
 @api_router.get("/ips/clean", response_model=List[dict])
@@ -263,19 +273,15 @@ async def list_clean_ips(current_user = Depends(get_current_admin_user)):
     """List all clean (whitelisted) IPs."""
     return await get_clean_ips()
 
-@api_router.post("/ips/ban/{ip}")
+@api_router.post("/ban-ip")
 async def ban_ip_endpoint(ip: str, current_user = Depends(get_current_admin_user)):
-    """Ban an IP address."""
     success = await ban_ip(ip)
-    if not success: raise HTTPException(status_code=400, detail="Failed to ban IP")
-    return {"message": f"IP {ip} has been banned"}
+    return {"success": success}
 
-@api_router.post("/ips/unban/{ip}")
+@api_router.post("/unban-ip")
 async def unban_ip_endpoint(ip: str, current_user = Depends(get_current_admin_user)):
-    """Remove IP from ban list."""
     success = await unban_ip(ip)
-    if not success: raise HTTPException(status_code=404, detail="IP not found in ban list")
-    return {"message": f"IP {ip} has been unbanned"}
+    return {"success": success}
 
 # Include the API router
 app.include_router(api_router)

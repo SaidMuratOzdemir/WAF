@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, asdict
 from client import Client
-from ip_utils import is_local_ip
+from ip_utils import is_local_ip, set_ip_info, get_ip_info
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +49,19 @@ class VirusTotalCache:
         if not self.redis_client:
             return None
         try:
-            key = await self._get_cache_key(ip)
-            val = await self.redis_client.get(key)
-            if val:
-                return IPCacheEntry(**json.loads(val))
+            info = await get_ip_info(self.redis_client, ip)
+            vt = info.get('vt')
+            if vt:
+                return IPCacheEntry(
+                    ip=ip,
+                    is_malicious=vt.get('is_malicious', False),
+                    reputation=vt.get('reputation', 0),
+                    threat_types=vt.get('threat_types', []),
+                    detection_count=vt.get('detection_count', 0),
+                    total_engines=vt.get('total_engines', 0),
+                    cached_date=vt.get('cached_date', ''),
+                    timestamp=vt.get('timestamp', 0)
+                )
         except Exception as e:
             logger.error(f"VT cache get error for {ip}: {e}")
         return None
@@ -71,9 +80,8 @@ class VirusTotalCache:
                 cached_date=datetime.now().strftime(self.date_format),
                 timestamp=datetime.now().timestamp()
             )
-            key = await self._get_cache_key(ip)
-            # expire in 25h to cover TZ shifts
-            await self.redis_client.setex(key, 25 * 3600, json.dumps(asdict(entry)))
+            vt = asdict(entry)
+            await set_ip_info(self.redis_client, ip, vt=vt)
             logger.debug(f"VT cache set for {ip}")
         except Exception as e:
             logger.error(f"VT cache set error for {ip}: {e}")
@@ -83,15 +91,18 @@ class VirusTotalCache:
             return 0
         deleted = 0
         try:
-            today = datetime.now().date()
-            for days_back in range(1, 8):
-                day = (today - timedelta(days=days_back)).strftime(self.date_format)
-                pattern = f"{self.cache_prefix}:{day}:*"
-                keys = await self.redis_client.keys(pattern)
-                if keys:
-                    count = await self.redis_client.delete(*keys)
-                    deleted += count
-                    logger.info(f"Cleaned {count} entries for {day}")
+            keys = await self.redis_client.keys('ip_info:*')
+            for key in keys:
+                val = await self.redis_client.get(key)
+                if val:
+                    try:
+                        info = json.loads(val)
+                        if 'vt' in info:
+                            del info['vt']
+                            await self.redis_client.set(key, json.dumps(info))
+                            deleted += 1
+                    except Exception:
+                        continue
         except Exception as e:
             logger.error(f"Error cleaning VT cache: {e}")
         return deleted

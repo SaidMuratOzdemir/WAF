@@ -98,8 +98,10 @@ class WAFManager:
         client_ip = request.remote or "unknown"
 
         # 0) Ban check
-        if manager.redis_client and await is_banned_ip(manager.redis_client, client_ip):
-            return create_block_response("BANNED_IP", client_ip)
+        if manager.redis_client:
+            banned = await is_banned_ip(manager.redis_client, client_ip)
+            if banned:
+                return create_block_response("BANNED_IP", client_ip)
 
         # Match host → site
         host = request.headers.get("Host", "").split(":")[0].lower()

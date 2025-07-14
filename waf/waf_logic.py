@@ -7,7 +7,7 @@ from typing import Tuple
 from aiohttp import web
 from database import Site
 from vt_cache import CachedVirusTotalClient
-from ip_utils import is_local_ip, ban_ip
+from ip_utils import is_local_ip, ban_ip, is_banned_ip
 
 # Global cache for VT client instances
 _vt_clients_cache: dict = {}
@@ -74,20 +74,20 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
         body = ""
     mal, attack = await is_malicious_content(body, site.xss_enabled, site.sql_enabled)
     if mal:
-        ban_ip(request.app['waf_manager'].redis_client, client_ip)
+        await ban_ip(request.app['waf_manager'].redis_client, client_ip)
         return True, attack
 
     # 2) URL path
     mal, attack = await is_malicious_content(request.path, site.xss_enabled, site.sql_enabled)
     if mal:
-        ban_ip(request.app['waf_manager'].redis_client, client_ip)
+        await ban_ip(request.app['waf_manager'].redis_client, client_ip)
         logging.warning(f"Malicious in path '{request.path}'")
         return True, attack
 
     # 3) Query
     mal, attack = await is_malicious_content(str(request.query_string), site.xss_enabled, site.sql_enabled)
     if mal:
-        ban_ip(request.app['waf_manager'].redis_client, client_ip)
+        await ban_ip(request.app['waf_manager'].redis_client, client_ip)
         logging.warning(f"Malicious in query '{request.query_string}'")
         return True, attack
 
@@ -101,7 +101,7 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
             continue
         mal, attack = await is_malicious_content(f"{h}: {v}", site.xss_enabled, site.sql_enabled)
         if mal:
-            ban_ip(request.app['waf_manager'].redis_client, client_ip)
+            await ban_ip(request.app['waf_manager'].redis_client, client_ip)
             logging.warning(f"Malicious header '{h}'")
             return True, attack
 
@@ -109,10 +109,9 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
     if site.vt_enabled and client_ip and not is_local_ip(client_ip):
         vt = await get_vt_client(client_ip)
         if await vt.is_ip_malicious():
-            ban_ip(request.app['waf_manager'].redis_client, client_ip)
+            await ban_ip(request.app['waf_manager'].redis_client, client_ip)
             logging.warning(f"Malicious IP via VT: {client_ip}")
             return True, "MALICIOUS_IP"
-
     return False, ""
 
 def create_block_response(attack_type: str, client_ip: str = "unknown") -> web.Response:

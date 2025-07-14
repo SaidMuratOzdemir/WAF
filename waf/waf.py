@@ -13,6 +13,7 @@ from database import init_database, fetch_sites_from_db, Site
 from waf_logic import is_malicious_request, create_block_response
 from vt_cache import cleanup_old_cache_task, VirusTotalCache
 from ip_utils import is_banned_ip, ban_ip
+from analysis import fetch_patterns_from_api
 
 load_dotenv()
 
@@ -36,6 +37,7 @@ class WAFManager:
         self.client_session = None
         self.request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
         self.vt_cache = None
+        self.pattern_task = None
 
     async def init_redis(self):
         try:
@@ -92,6 +94,9 @@ class WAFManager:
             logger.info(f"Stopped listener on {port}")
 
     async def handle_request(self, request: web.Request) -> web.Response:
+        """
+        Gelen isteği işler, ban kontrolü ve analiz için modüler fonksiyonları kullanır.
+        """
         port = request.app["port"]
         hosts = request.app["hosts_config"]
         manager = request.app["waf_manager"]
@@ -121,10 +126,7 @@ class WAFManager:
         try:
             is_mal, attack = await is_malicious_request(request, site, body)
             if is_mal:
-                # global ban if not already
-                if manager.redis_client:
-                    await ban_ip(manager.redis_client, client_ip)
-                logger.warning(f"Blocked & banned {client_ip} for {attack}")
+                # global ban if not already (ban_and_log zaten logluyor)
                 return create_block_response(attack, client_ip)
 
             # WebSocket?
@@ -200,6 +202,7 @@ class WAFManager:
         await init_database()
         await self.init_redis()
         await self.load_sites()
+        await self.start_pattern_updater()
 
         self.running = True
         tasks = [asyncio.create_task(self.polling_task())]
@@ -228,6 +231,19 @@ class WAFManager:
         while self.running:
             await asyncio.sleep(POLL_INTERVAL)
             await self.load_sites()
+
+    async def start_pattern_updater(self):
+        async def updater():
+            while True:
+                try:
+                    print("PATTERN UPDATER: fetch_patterns_from_api çağrılıyor")
+                    await fetch_patterns_from_api()
+                except Exception as e:
+                    logger.error(f"Pattern updater crashed: {e}")
+                    print(f"Pattern updater crashed: {e}")
+                print("PATTERN UPDATER: 60sn bekliyor")
+                await asyncio.sleep(60)
+        self.pattern_task = asyncio.create_task(updater())
 
 async def main():
     manager = WAFManager()

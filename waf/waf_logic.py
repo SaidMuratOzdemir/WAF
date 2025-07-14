@@ -8,6 +8,11 @@ from aiohttp import web
 from database import Site
 from vt_cache import CachedVirusTotalClient
 from ip_utils import is_local_ip, ban_ip, is_banned_ip
+from analysis import check_body_for_malicious, check_path_for_malicious, check_query_for_malicious, check_headers_for_malicious
+from ban import ban_and_log
+from virustotal import check_ip_with_virustotal
+
+logger = logging.getLogger(__name__)
 
 # Global cache for VT client instances
 _vt_clients_cache: dict = {}
@@ -43,76 +48,48 @@ SQL_PATTERNS = [
     r'/\*.*\*/',
 ]
 
-async def is_malicious_content(content: str, xss_enabled: bool, sql_enabled: bool) -> Tuple[bool, str]:
-    if not content:
-        return False, ""
-    txt = content.lower()
-    if xss_enabled:
-        for p in XSS_PATTERNS:
-            if re.search(p, txt, re.IGNORECASE | re.DOTALL):
-                logging.warning(f"XSS detected: {p}")
-                return True, "XSS"
-    if sql_enabled:
-        for p in SQL_PATTERNS:
-            if re.search(p, txt, re.IGNORECASE | re.DOTALL):
-                logging.warning(f"SQL injection detected: {p}")
-                return True, "SQL_INJECTION"
-    return False, ""
-
-async def is_malicious_request(request: web.Request, site: Site, body_bytes: bytes = None) -> Tuple[bool, str]:
+async def is_malicious_request(request, site, body_bytes=None) -> Tuple[bool, str]:
     """
-    Returns (blocked, attack_type).
-    On detection, also bans the client IP in Redis.
+    İsteği analiz eder, zararlı bulursa banlar ve sebebini döner.
     """
     client_ip = request.remote or "unknown"
-    # 1) Body
-    if body_bytes is None:
-        body_bytes = await request.read()
     try:
-        body = body_bytes.decode('utf-8', errors='ignore')
-    except:
-        body = ""
-    mal, attack = await is_malicious_content(body, site.xss_enabled, site.sql_enabled)
-    if mal:
-        await ban_ip(request.app['waf_manager'].redis_client, client_ip)
-        return True, attack
-
-    # 2) URL path
-    mal, attack = await is_malicious_content(request.path, site.xss_enabled, site.sql_enabled)
-    if mal:
-        await ban_ip(request.app['waf_manager'].redis_client, client_ip)
-        logging.warning(f"Malicious in path '{request.path}'")
-        return True, attack
-
-    # 3) Query
-    mal, attack = await is_malicious_content(str(request.query_string), site.xss_enabled, site.sql_enabled)
-    if mal:
-        await ban_ip(request.app['waf_manager'].redis_client, client_ip)
-        logging.warning(f"Malicious in query '{request.query_string}'")
-        return True, attack
-
-    # 4) Headers
-    skip = {'user-agent','accept','accept-encoding','accept-language','cookie',
-            'connection','host','cache-control','upgrade-insecure-requests',
-            'sec-ch-ua','sec-ch-ua-mobile','sec-ch-ua-platform',
-            'sec-fetch-site','sec-fetch-mode','sec-fetch-dest'}
-    for h, v in request.headers.items():
-        if h.lower() in skip:
-            continue
-        mal, attack = await is_malicious_content(f"{h}: {v}", site.xss_enabled, site.sql_enabled)
+        if body_bytes is None:
+            body_bytes = await request.read()
+        try:
+            body = body_bytes.decode('utf-8', errors='ignore')
+        except Exception:
+            body = ""
+        # Body
+        mal, attack = await check_body_for_malicious(body, site)
         if mal:
-            await ban_ip(request.app['waf_manager'].redis_client, client_ip)
-            logging.warning(f"Malicious header '{h}'")
+            await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
             return True, attack
-
-    # 5) VirusTotal IP check
-    if site.vt_enabled and client_ip and not is_local_ip(client_ip):
-        vt = await get_vt_client(client_ip)
-        if await vt.is_ip_malicious():
-            await ban_ip(request.app['waf_manager'].redis_client, client_ip)
-            logging.warning(f"Malicious IP via VT: {client_ip}")
-            return True, "MALICIOUS_IP"
-    return False, ""
+        # Path
+        mal, attack = await check_path_for_malicious(request.path, site)
+        if mal:
+            await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
+            return True, attack
+        # Query
+        mal, attack = await check_query_for_malicious(str(request.query_string), site)
+        if mal:
+            await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
+            return True, attack
+        # Headers
+        mal, attack = await check_headers_for_malicious(request.headers, site)
+        if mal:
+            await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
+            return True, attack
+        # VirusTotal
+        if site.vt_enabled and client_ip:
+            vt_result = await check_ip_with_virustotal(client_ip, redis_url=request.app['waf_manager'].redis_client.connection_pool.connection_kwargs.get('address'))
+            if vt_result.get('is_malicious'):
+                await ban_and_log(request.app['waf_manager'].redis_client, client_ip, "MALICIOUS_IP")
+                return True, "MALICIOUS_IP"
+        return False, ""
+    except Exception as e:
+        logger.error(f"Error in is_malicious_request: {e}")
+        return False, "error"
 
 def create_block_response(attack_type: str, client_ip: str = "unknown") -> web.Response:
     import time

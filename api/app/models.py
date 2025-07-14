@@ -28,3 +28,12 @@ class Site(Base):
     __table_args__ = (
         UniqueConstraint('port', 'host', name='unique_port_host'),
     )
+
+class MaliciousPattern(Base):
+    __tablename__ = "malicious_patterns"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    pattern = Column(String, nullable=False)
+    type = Column(String, nullable=False)  # xss, sql, custom
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

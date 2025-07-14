@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Form, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List
+from typing import List, Optional
 import os
 import redis.asyncio as redis
 from datetime import datetime, timedelta
@@ -26,14 +26,16 @@ from .redis_service import (
     ban_ip,
     unban_ip
 )
+from .models import MaliciousPattern
+from .schemas import MaliciousPatternBase, MaliciousPatternCreate, MaliciousPatternUpdate, MaliciousPatternOut
+from sqlalchemy.future import select
+from fastapi import UploadFile, File
+import io
 
 app = FastAPI(title="WAF Admin API")
 
 # Router for all API endpoints (requires authentication)
-api_router = APIRouter(
-    prefix="/api",
-    dependencies=[Depends(verify_token)],
-)
+api_router = APIRouter(prefix="/api")
 
 @app.on_event("startup")
 async def startup_event():
@@ -55,7 +57,7 @@ app.add_middleware(
 )
 
 # Authentication endpoint (no token required)
-@app.post("/login", response_model=TokenResponse)
+@app.post("/api/login", response_model=TokenResponse)
 async def login(
     username: str = Form(...),
     password: str = Form(...),
@@ -85,7 +87,7 @@ async def health_check():
 
 # --- API ROUTES ---
 
-@api_router.get("/sites", response_model=List[SiteSchema])
+@api_router.get("/sites", response_model=List[SiteSchema], dependencies=[Depends(verify_token)])
 async def list_sites(
     session: AsyncSession = Depends(get_session)
 ):
@@ -282,6 +284,61 @@ async def ban_ip_endpoint(ip: str, current_user = Depends(get_current_admin_user
 async def unban_ip_endpoint(ip: str, current_user = Depends(get_current_admin_user)):
     success = await unban_ip(ip)
     return {"success": success}
+
+@api_router.get("/patterns", response_model=List[MaliciousPatternOut])
+async def list_patterns(
+    type: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+    current_user = Depends(get_current_admin_user)
+):
+    query = select(MaliciousPattern)
+    if type:
+        query = query.where(MaliciousPattern.type == type)
+    result = await session.execute(query)
+    return result.scalars().all()
+
+@api_router.post("/patterns", response_model=List[MaliciousPatternOut], dependencies=[Depends(verify_token)])
+async def add_patterns(
+    patterns: Optional[List[MaliciousPatternCreate]] = None,
+    file: Optional[UploadFile] = File(None),
+    type: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+    current_user = Depends(get_current_admin_user)
+):
+    new_patterns = []
+    if file:
+        content = await file.read()
+        lines = io.StringIO(content.decode()).readlines()
+        for line in lines:
+            line = line.strip()
+            if line:
+                new_patterns.append(MaliciousPattern(pattern=line, type=type or 'custom'))
+    if patterns:
+        for p in patterns:
+            new_patterns.append(MaliciousPattern(pattern=p.pattern, type=p.type, description=p.description))
+    session.add_all(new_patterns)
+    await session.commit()
+    return new_patterns
+
+@api_router.put("/patterns/{pattern_id}", response_model=MaliciousPatternOut, dependencies=[Depends(verify_token)])
+async def update_pattern(pattern_id: int, pattern: MaliciousPatternUpdate, session: AsyncSession = Depends(get_session), current_user = Depends(get_current_admin_user)):
+    db_pattern = await session.get(MaliciousPattern, pattern_id)
+    if not db_pattern:
+        raise HTTPException(status_code=404, detail="Pattern not found")
+    for field, value in pattern.dict(exclude_unset=True).items():
+        setattr(db_pattern, field, value)
+    await session.commit()
+    await session.refresh(db_pattern)
+    return db_pattern
+
+@api_router.delete("/patterns/{pattern_id}", dependencies=[Depends(verify_token)])
+async def delete_pattern(pattern_id: int, session: AsyncSession = Depends(get_session), current_user = Depends(get_current_admin_user)):
+    db_pattern = await session.get(MaliciousPattern, pattern_id)
+    if not db_pattern:
+        raise HTTPException(status_code=404, detail="Pattern not found")
+    await session.delete(db_pattern)
+    await session.commit()
+    return {"success": True}
 
 # Include the API router
 app.include_router(api_router)

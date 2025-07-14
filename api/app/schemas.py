@@ -1,5 +1,6 @@
 from pydantic import BaseModel, HttpUrl, conint, field_validator
 from typing import Optional
+from datetime import datetime
 
 class SiteBase(BaseModel):
     port: int
@@ -21,3 +22,25 @@ class Site(SiteBase):
 
     class Config:
         from_attributes = True
+
+
+class MaliciousPatternBase(BaseModel):
+    pattern: str
+    type: str
+    description: Optional[str] = None
+
+class MaliciousPatternCreate(MaliciousPatternBase):
+    pass
+
+class MaliciousPatternUpdate(BaseModel):
+    pattern: Optional[str] = None
+    type: Optional[str] = None
+    description: Optional[str] = None
+
+class MaliciousPatternOut(MaliciousPatternBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True

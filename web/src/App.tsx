@@ -7,6 +7,7 @@ import { SiteForm } from './components/SiteForm';
 import { Login } from './components/Login';
 import VirusTotalStats from './components/VirusTotalStats';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import PatternManagement from './components/PatternManagement';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { checkAuth } = useAuth();
@@ -76,6 +77,16 @@ function App() {
               <ProtectedRoute>
                 <Suspense fallback={<div>Yükleniyor...</div>}>
                   <IPManagement />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/patterns"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<div>Yükleniyor...</div>}>
+                  <PatternManagement />
                 </Suspense>
               </ProtectedRoute>
             }

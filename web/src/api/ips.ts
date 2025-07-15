@@ -13,7 +13,7 @@ const getAuthHeaders = () => ({
 });
 
 export const getBannedIPs = async (): Promise<IPInfo[]> => {
-  const response = await fetch(`${API_URL}/ips/banned`, {
+  const response = await fetch(`${API_URL}/banned-ips`, {
     credentials: 'include',
     headers: getAuthHeaders(),
   });

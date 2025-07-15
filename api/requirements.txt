@@ -10,3 +10,4 @@ redis==5.0.1
 pydantic==2.5.2
 python-dotenv==1.0.0
 alembic==1.12.1
+pydantic-settings

@@ -1,20 +1,19 @@
 # waf_logic.py
-
-import re
 import logging
 import os
 from typing import Tuple
 from aiohttp import web
 from database import Site
 from vt_cache import CachedVirusTotalClient
-from ip_utils import is_local_ip, ban_ip, is_banned_ip
-from analysis import check_body_for_malicious, check_path_for_malicious, check_query_for_malicious, check_headers_for_malicious
+from analysis import (
+    check_body_for_malicious,
+    check_path_for_malicious,
+    check_query_for_malicious,
+    check_headers_for_malicious,
+)
 from ban import ban_and_log
-from virustotal import check_ip_with_virustotal
 
 logger = logging.getLogger(__name__)
-
-# Global cache for VT client instances
 _vt_clients_cache: dict = {}
 
 async def get_vt_client(ip: str) -> CachedVirusTotalClient:
@@ -25,71 +24,48 @@ async def get_vt_client(ip: str) -> CachedVirusTotalClient:
         _vt_clients_cache[ip] = client
     return _vt_clients_cache[ip]
 
-# XSS and SQL injection patterns
-XSS_PATTERNS = [
-    r'<script\b',
-    r'</script>',
-    r'javascript\s*:',
-    r'on\w+\s*=\s*["\'][^"\']*["\']',
-    r'<iframe\b',
-    r'document\.cookie',
-    r'alert\s*\(',
-    r'eval\s*\(',
-]
-
-SQL_PATTERNS = [
-    r'\bunion\s+select\b',
-    r'\bor\s+1\s*=\s*1\b',
-    r'\band\s+1\s*=\s*1\b',
-    r"'\s*or\s*'",
-    r'"\s*or\s*"',
-    r';\s*(drop|delete|update|insert)\b',
-    r'--\s',
-    r'/\*.*\*/',
-]
-
-async def is_malicious_request(request, site, body_bytes=None) -> Tuple[bool, str]:
+async def is_malicious_request(request, site: Site, body_bytes=None) -> Tuple[bool, str]:
     """
-    İsteği analiz eder, zararlı bulursa banlar ve sebebini döner.
+    İsteği veritabanındaki desenlere ve VT/IP reputasyonuna göre analiz eder.
     """
     client_ip = request.remote or "unknown"
     try:
+        # Body bir kez okunmuşsa parametre olarak gelir
         if body_bytes is None:
             body_bytes = await request.read()
-        try:
-            body = body_bytes.decode('utf-8', errors='ignore')
-        except Exception:
-            body = ""
-        # Body
-        mal, attack = await check_body_for_malicious(body, site)
-        if mal:
-            await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
-            return True, attack
-        # Path
-        mal, attack = await check_path_for_malicious(request.path, site)
-        if mal:
-            await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
-            return True, attack
-        # Query
-        mal, attack = await check_query_for_malicious(str(request.query_string), site)
-        if mal:
-            await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
-            return True, attack
-        # Headers
-        mal, attack = await check_headers_for_malicious(request.headers, site)
-        if mal:
-            await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
-            return True, attack
-        # VirusTotal
+        body = body_bytes.decode('utf-8', errors='ignore')
+
+        # 1) İçerik kontrolleri (DB desenleri)
+        for checker in (
+            check_body_for_malicious,
+            check_path_for_malicious,
+            check_query_for_malicious,
+            check_headers_for_malicious,
+        ):
+            target = (
+                body if checker is check_body_for_malicious else
+                (request.path if checker is check_path_for_malicious else
+                 (str(request.query_string) if checker is check_query_for_malicious else
+                  request.headers))
+            )
+            mal, attack = await checker(target, site)
+            if mal:
+                await ban_and_log(request.app['waf_manager'].redis_client, client_ip, attack)
+                return True, attack
+
+        # 2) VirusTotal IP kontrolü
         if site.vt_enabled and client_ip:
-            vt_result = await check_ip_with_virustotal(client_ip, redis_url=request.app['waf_manager'].redis_client.connection_pool.connection_kwargs.get('address'))
-            if vt_result.get('is_malicious'):
+            vt_client = await get_vt_client(client_ip)
+            vt_result = await vt_client.check_ip()
+            if vt_result.is_malicious:
                 await ban_and_log(request.app['waf_manager'].redis_client, client_ip, "MALICIOUS_IP")
                 return True, "MALICIOUS_IP"
+
         return False, ""
     except Exception as e:
-        logger.error(f"Error in is_malicious_request: {e}")
-        return False, "error"
+        logger.exception("Error in is_malicious_request")
+        return False, "analysis_error"
+
 
 def create_block_response(attack_type: str, client_ip: str = "unknown") -> web.Response:
     import time
@@ -112,11 +88,11 @@ def create_block_response(attack_type: str, client_ip: str = "unknown") -> web.R
         <p><strong>IP:</strong> {client_ip}</p>
         <p><strong>Time:</strong> {ts}</p>
         <div class="i">
-          <p>Contact admin if you believe this is an error.</p>
-        </div>
+          <p>Contact admin if you believe this is an error.</p>\ n        </div>
       </div>
     </body>
     </html>
     """
     return web.Response(text=body, status=403, content_type="text/html",
                         headers={"X-WAF-Block-Reason": attack_type})
+

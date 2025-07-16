@@ -1,57 +1,52 @@
-import { Pattern, PatternCreate, PatternUpdate } from '../types/Pattern';
+import { Pattern, PatternCreate, PatternUpdate, PatternType } from '../types/Pattern';
+import { apiFetch } from './client';
 
-const API_URL = '/api/patterns';
-
-function authHeaders(extra: any = {}) {
-  const token = localStorage.getItem('token');
-  return {
-    'Authorization': token ? `Bearer ${token}` : '',
-    ...extra
-  };
+export interface PatternPage {
+  items: Pattern[];
+  total: number;
 }
 
-export async function getPatterns(type?: string): Promise<Pattern[]> {
-  const url = type ? `${API_URL}?type=${type}` : API_URL;
-  const res = await fetch(url, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Pattern listesi alınamadı');
-  return res.json();
+export interface PatternUploadResult {
+  success: number;
+  failed: number;
+  errors: string[];
+}
+
+export async function getPatterns(
+  page: number = 1,
+  pageSize: number = 20,
+  type?: PatternType,
+  search?: string
+): Promise<PatternPage> {
+  const params = new URLSearchParams();
+  params.append('limit', String(pageSize));
+  params.append('offset', String((page - 1) * pageSize));
+  if (type) params.append('pattern_type', type); // DÜZELTİLDİ
+  if (search) params.append('search', search);
+  return apiFetch<PatternPage>(`/patterns?${params.toString()}`);
 }
 
 export async function addPattern(pattern: PatternCreate): Promise<Pattern> {
-  const res = await fetch(API_URL, {
+  return apiFetch('/patterns/single', {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ patterns: [pattern] })
+    body: JSON.stringify(pattern)
   });
-  if (!res.ok) throw new Error('Pattern eklenemedi');
-  return (await res.json())[0];
 }
 
-export async function addPatternsFromTxt(file: File, type: string): Promise<Pattern[]> {
+export async function addPatternsFromTxt(file: File, type: PatternType): Promise<PatternUploadResult> {
   const formData = new FormData();
   formData.append('file', file);
   formData.append('type', type);
-  const res = await fetch(API_URL, {
-    method: 'POST',
-    headers: authHeaders(),
-    body: formData
-  });
-  if (!res.ok) throw new Error('TXT ile pattern eklenemedi');
-  return await res.json();
+  return apiFetch('/patterns', { method: 'POST', body: formData });
 }
 
 export async function updatePattern(id: number, update: PatternUpdate): Promise<Pattern> {
-  const res = await fetch(`${API_URL}/${id}`, {
+  return apiFetch(`/patterns/${id}`, {
     method: 'PUT',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(update)
   });
-  if (!res.ok) throw new Error('Pattern güncellenemedi');
-  return await res.json();
 }
 
 export async function deletePattern(id: number): Promise<void> {
-  const res = await fetch(`${API_URL}/${id}`, {
-    method: 'DELETE', headers: authHeaders() });
-  if (!res.ok) throw new Error('Pattern silinemedi');
+  return apiFetch(`/patterns/${id}`, { method: 'DELETE' });
 } 

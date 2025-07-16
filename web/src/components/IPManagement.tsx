@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getBannedIPs, getCleanIPs, banIP, unbanIP, whitelistIP, unwhitelistIP, IPInfo } from '../api/ips';
+import { getBannedIPs, getCleanIPs, banIP, unbanIP, IPInfo } from '../api/ips';
 import { Box, Typography, Button, TextField, List, ListItem, ListItemText, Divider, Stack } from '@mui/material';
 
 const IPManagement: React.FC = () => {
@@ -29,14 +29,6 @@ const IPManagement: React.FC = () => {
     await unbanIP(ip);
     fetchIPs();
   };
-  const handleWhitelist = async (ip: string) => {
-    await whitelistIP(ip);
-    fetchIPs();
-  };
-  const handleUnwhitelist = async (ip: string) => {
-    await unwhitelistIP(ip);
-    fetchIPs();
-  };
   const handleAddIP = async () => {
     if (!newIP) return;
     await banIP(newIP);
@@ -59,7 +51,6 @@ const IPManagement: React.FC = () => {
           <ListItem key={ip.ip} secondaryAction={
             <Stack direction="row" spacing={1}>
               <Button size="small" onClick={() => handleUnban(ip.ip)}>Unban</Button>
-              <Button size="small" onClick={() => handleWhitelist(ip.ip)}>Whitelist</Button>
             </Stack>
           }>
             <ListItemText primary={ip.ip} secondary={ip.banned_at && `Banned at: ${ip.banned_at}`} />
@@ -70,9 +61,7 @@ const IPManagement: React.FC = () => {
       <Typography variant="h6">Whitelist IP'ler</Typography>
       <List>
         {cleanIPs.map(ip => (
-          <ListItem key={ip.ip} secondaryAction={
-            <Button size="small" onClick={() => handleUnwhitelist(ip.ip)}>Remove</Button>
-          }>
+          <ListItem key={ip.ip}>
             <ListItemText primary={ip.ip} secondary={ip.added_at && `Added at: ${ip.added_at}`} />
           </ListItem>
         ))}

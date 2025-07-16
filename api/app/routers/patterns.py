@@ -1,9 +1,9 @@
 # api/app/routers/patterns.py
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func, or_
 import io
 
 from app.database import get_session
@@ -12,25 +12,45 @@ from app.schemas import (
     MaliciousPatternCreate,
     MaliciousPatternUpdate,
     MaliciousPatternOut,
-    UserInDB
+    UserInDB,
+    PatternPage
 )
 from app.core.security import get_current_admin_user
 
 router = APIRouter(prefix="/patterns", tags=["Patterns"])
 
 
-@router.get("", response_model=List[MaliciousPatternOut])
+@router.get("", response_model=PatternPage)
 async def list_patterns(
         pattern_type: Optional[str] = None,
+        search: Optional[str] = None,
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
         session: AsyncSession = Depends(get_session),
         current_user: UserInDB = Depends(get_current_admin_user)
 ):
-    """List malicious patterns, with an optional filter by type."""
-    query = select(MaliciousPattern).order_by(MaliciousPattern.id)
+    query = select(MaliciousPattern)
+    count_query = select(func.count()).select_from(MaliciousPattern)
     if pattern_type:
         query = query.where(MaliciousPattern.type == pattern_type)
-    result = await session.execute(query)
-    return result.scalars().all()
+        count_query = count_query.where(MaliciousPattern.type == pattern_type)
+    if search:
+        like = f"%{search}%"
+        query = query.where(or_(
+            MaliciousPattern.pattern.ilike(like),
+            MaliciousPattern.description.ilike(like)
+        ))
+        count_query = count_query.where(or_(
+            MaliciousPattern.pattern.ilike(like),
+            MaliciousPattern.description.ilike(like)
+        ))
+    total = (await session.execute(count_query)).scalar()
+    result = await session.execute(query.order_by(MaliciousPattern.id).limit(limit).offset(offset))
+    items = result.scalars().all()
+    return PatternPage(
+        items=[MaliciousPatternOut.model_validate(obj) for obj in items],
+        total=total
+    )
 
 
 @router.post("", response_model=List[MaliciousPatternOut], status_code=status.HTTP_201_CREATED)
@@ -59,6 +79,19 @@ async def add_patterns_from_file(
     # For simplicity, we return the list of objects we added.
     # A more robust solution might re-query them.
     return new_patterns
+
+
+@router.post("/single", response_model=MaliciousPatternOut, status_code=status.HTTP_201_CREATED)
+async def add_single_pattern(
+    pattern: MaliciousPatternCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserInDB = Depends(get_current_admin_user)
+):
+    new_pattern = MaliciousPattern(**pattern.model_dump())
+    session.add(new_pattern)
+    await session.commit()
+    await session.refresh(new_pattern)
+    return MaliciousPatternOut.model_validate(new_pattern)
 
 
 @router.put("/{pattern_id}", response_model=MaliciousPatternOut)

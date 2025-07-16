@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from pydantic import BaseModel, HttpUrl, Field, field_validator, ConfigDict
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 # --- Token Schemas ---
@@ -65,6 +65,10 @@ class MaliciousPatternOut(MaliciousPatternBase):
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+class PatternPage(BaseModel):
+    items: List[MaliciousPatternOut]
+    total: int
 
 # --- IP Management Schemas ---
 class BannedIP(BaseModel):

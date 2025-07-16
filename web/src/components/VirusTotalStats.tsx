@@ -20,7 +20,8 @@ import {
     ManageAccounts as ManageIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-export const API_URL = '/api';
+import { apiFetch } from '../api/client';
+export const API_URL = '/api/v1';
 
 interface CacheStats {
     date: string;
@@ -48,20 +49,8 @@ const VirusTotalStats = () => {
     const fetchStats = async () => {
         setLoading(true);
         setError(null);
-        
         try {
-            const token = localStorage.getItem('token');
-            const response =await fetch(`${API_URL}/vt-cache-stats`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Cache istatistikleri alınamadı');
-            }
-
-            const data = await response.json();
+            const data = await apiFetch<CacheStats>('/system/vt-cache/stats');
             setStats(data);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Bilinmeyen hata');
@@ -72,25 +61,10 @@ const VirusTotalStats = () => {
 
     const handleCleanup = async () => {
         setCleanupLoading(true);
-        
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${API_URL}/vt-cache-cleanup`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Cache temizliği başarısız');
-            }
-
-            const result: CleanupResult = await response.json();
+            const result = await apiFetch<CleanupResult>('/system/vt-cache/cleanup', { method: 'POST' });
             setSnackbarMessage(`${result.cleaned_entries} cache girişi temizlendi`);
             setSnackbarOpen(true);
-            
-            // Refresh stats after cleanup
             await fetchStats();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Cache temizleme hatası');

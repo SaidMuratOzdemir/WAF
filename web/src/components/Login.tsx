@@ -9,6 +9,7 @@ import {
     Container
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../api/client';
 
 export const API_URL = '/api';
 
@@ -29,16 +30,10 @@ export function Login() {
             formData.append('username', username);
             formData.append('password', password);
 
-            const response = await fetch(`${API_URL}/login`, {
+            const data = await apiFetch('/auth/login', {
                 method: 'POST',
                 body: formData
             });
-
-            if (!response.ok) {
-                throw new Error('Invalid credentials');
-            }
-
-            const data = await response.json();
             localStorage.setItem('token', data.access_token);
             navigate('/sites');
         } catch (err) {

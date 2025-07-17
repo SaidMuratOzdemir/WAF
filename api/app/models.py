@@ -1,8 +1,13 @@
-# api/app/models.py
+# ./api/app/models.py
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, UniqueConstraint
 from sqlalchemy.sql import func
-from .database import Base
+# <<< FIX: REMOVE THE RELATIVE IMPORT
+# from .database import Base
+
+# <<< FIX: ADD THESE TWO LINES TO MAKE THE FILE SELF-CONTAINED
+from sqlalchemy.orm import declarative_base
+Base = declarative_base()
 
 
 class User(Base):
@@ -20,7 +25,7 @@ class Site(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     port = Column(Integer, nullable=False)
-    host = Column(String, nullable=False)  # Host header to match
+    host = Column(String, nullable=False)
     name = Column(String, nullable=False)
     frontend_url = Column(String, nullable=False)
     backend_url = Column(String, nullable=False)
@@ -28,7 +33,6 @@ class Site(Base):
     sql_enabled = Column(Boolean, default=True)
     vt_enabled = Column(Boolean, default=False)
 
-    # Composite unique constraint for port+host combination
     __table_args__ = (
         UniqueConstraint('port', 'host', name='unique_port_host'),
     )
@@ -38,7 +42,7 @@ class MaliciousPattern(Base):
     __tablename__ = "malicious_patterns"
     id = Column(Integer, primary_key=True, autoincrement=True)
     pattern = Column(String, nullable=False, index=True)
-    type = Column(String, nullable=False, index=True)  # xss, sql, custom
+    type = Column(String, nullable=False, index=True)
     description = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

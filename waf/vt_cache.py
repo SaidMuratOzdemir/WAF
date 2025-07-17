@@ -191,6 +191,10 @@ class CachedVirusTotalClient:
         summary["cached"] = False
         return summary
 
+    async def check_ip(self):
+        """is_ip_malicious ile aynı mantık, waf_logic ile uyumlu olması için eklenmiştir."""
+        return await self.is_ip_malicious()
+
 # daily cleanup runner
 async def cleanup_old_cache_task(redis_url: str = None):
     cache = VirusTotalCache(redis_url)

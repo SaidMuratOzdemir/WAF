@@ -30,8 +30,8 @@ services:
 
   waf:
     build: 
-      context: ./waf
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./waf/Dockerfile
     ports:
       - "8081:8081"
       - "8082:8082"
@@ -44,8 +44,6 @@ services:
       - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
       - DEBUG=true
       - POLL_INTERVAL=5
-      - MAX_CONCURRENT_REQUESTS=1000
-      - REQUEST_TIMEOUT=30
     depends_on:
       postgres:
         condition: service_healthy
@@ -55,19 +53,30 @@ services:
 
   mitmproxy:
     build:
-      context: ./waf
-      dockerfile: Dockerfile.mitm
+      context: .
+      dockerfile: ./waf/Dockerfile.mitm
     ports:
-      - "8080:8080"  # MITMProxy web interface
-      - "8888:8888"  # MITMProxy proxy port
+      - "8080:8080"
+      - "8888:8888"
     environment:
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
       - REDIS_URL=redis://redis:6379
       - DEBUG=true
+    # <<< THE FINAL FIX IS HERE
+    command: >
+      mitmweb
+      --web-host 0.0.0.0
+      --web-port 8080
+      --listen-port 8888
+      --mode reverse:http://waf:8081
+      --set keep_host_header=true 
+      -s /app/mitmproxy.py
     depends_on:
-      - redis
+      waf:
+        condition: service_started
+      redis:
+        condition: service_healthy
     restart: unless-stopped
-    volumes:
-      - ./waf/mitmproxy.py:/app/mitmproxy.py:ro
 
   api:
     build: 

@@ -226,6 +226,15 @@ const VirusTotalStats = () => {
                         <Button
                             variant="contained"
                             color="primary"
+                            startIcon={<SecurityIcon />}
+                            onClick={() => navigate('/patterns')}
+                        >
+                            Kontrol Patternleri
+                        </Button>
+
+                        <Button
+                            variant="contained"
+                            color="primary"
                             startIcon={<ManageIcon />}
                             onClick={handleIPManagement}
                         >

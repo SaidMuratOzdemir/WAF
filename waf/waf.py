@@ -1,3 +1,5 @@
+# waf/waf.py
+
 import asyncio
 import logging
 import os
@@ -7,9 +9,11 @@ from aiohttp import web, ClientSession, WSMsgType, ClientTimeout
 import redis.asyncio as redis
 from dotenv import load_dotenv
 
-from database import init_database, fetch_sites_from_db, Site
+from models import Site
+from database import init_database, fetch_sites_from_db
 from waf_logic import is_malicious_request, create_block_response
-from vt_cache import VirusTotalCache, cleanup_old_cache_task
+from waf_request_logger import log_request_activity
+from vt_cache import VirusTotalCache
 from analysis import fetch_patterns_from_db
 
 load_dotenv()
@@ -25,6 +29,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 class WAFManager:
     def __init__(self):
@@ -52,10 +57,8 @@ class WAFManager:
     async def load_sites(self):
         async with self.load_lock:
             new = await fetch_sites_from_db()
-            # stop removed ports
             for port in set(self.sites) - set(new):
                 await self.stop_listener(port)
-            # start or update
             for port, hosts in new.items():
                 if port not in self.sites:
                     await self.start_listener(port, hosts)
@@ -74,8 +77,6 @@ class WAFManager:
         app["hosts_config"] = hosts
         app["waf_manager"] = self
         app.router.add_route("*", "/{path:.*}", self.handle_request)
-        app.router.add_get("/waf/health", self.health_check)
-        app.router.add_get("/waf/metrics", self.metrics_endpoint)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "0.0.0.0", port)
@@ -91,12 +92,8 @@ class WAFManager:
 
     async def handle_request(self, request: web.Request) -> web.Response:
         client_ip = request.remote or "unknown"
-        from ip_utils import is_banned_ip
-        # Ban check
-        if self.redis_client and await is_banned_ip(self.redis_client, client_ip):
-            return create_block_response("BANNED_IP", client_ip)
+        body = await request.read()
 
-        # Host → Site
         host = request.headers.get("Host", "").split(":")[0].lower()
         site = request.app["hosts_config"].get(host)
         if not site:
@@ -104,38 +101,45 @@ class WAFManager:
                 if cfg.startswith("*.") and host.endswith(cfg[2:]):
                     site = s
                     break
-        if not site:
-            return web.Response(text="No site config", status=404)
 
-        body = await request.read()
+        if not site:
+            await log_request_activity(request, body, "BLOCKED", "NO_SITE_CONFIG")
+            return web.Response(text="No site configuration found for this host.", status=404)
+
         try:
-            mal, reason = await is_malicious_request(request, site, body)
-            if mal:
+            is_mal, reason = await is_malicious_request(request, site, body)
+
+            if is_mal:
+                await log_request_activity(request, body, "BLOCKED", reason)
                 return create_block_response(reason, client_ip)
 
-            # WebSocket vs HTTP proxy
-            if (request.headers.get("connection","").lower() == "upgrade" and
-                request.headers.get("upgrade","").lower() == "websocket"):
+            await log_request_activity(request, body, "ALLOWED")
+
+            if (request.headers.get("connection", "").lower() == "upgrade" and
+                    request.headers.get("upgrade", "").lower() == "websocket"):
                 return await self.handle_websocket(request, site)
 
             return await self.proxy_http_request(request, site, body)
+
         except Exception:
-            logger.exception("Error handling request")
-            return web.Response(text="Internal error", status=500,
+            logger.exception("Critical error during request handling")
+            await log_request_activity(request, body, "BLOCKED", "HANDLER_EXCEPTION")
+            return web.Response(text="Internal WAF Error", status=500,
                                 headers={"X-WAF-Error": "handler_exception"})
 
     async def proxy_http_request(self, request: web.Request, site: Site, body: bytes):
         if not self.client_session:
             self.client_session = ClientSession(timeout=ClientTimeout(total=REQUEST_TIMEOUT))
 
-        headers = {k:v for k,v in request.headers.items() if k.lower() != "host"}
+        headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
+        # This routing logic is from the original code. It determines whether to send to frontend or backend.
         target = (site.backend_url if request.path.startswith("/api/") else site.frontend_url)
         if "localhost" in target:
-            target = target.replace("localhost","host.docker.internal")
+            target = target.replace("localhost", "host.docker.internal")
         url = f"{target.rstrip('/')}{request.path_qs}"
 
         async with self.client_session.request(
-            request.method, url, headers=headers, data=body, allow_redirects=False
+                request.method, url, headers=headers, data=body, allow_redirects=False
         ) as resp:
             data = await resp.read()
             hdrs = dict(resp.headers)
@@ -143,97 +147,77 @@ class WAFManager:
             return web.Response(body=data, status=resp.status, headers=hdrs)
 
     async def handle_websocket(self, request: web.Request, site: Site):
+        # This websocket logic is also from the original code.
         ws_srv = web.WebSocketResponse()
         await ws_srv.prepare(request)
-        target = (site.backend_url if request.path.startswith("/api/") else site.frontend_url)\
-                 .replace("http://","ws://").replace("https://","wss://")
-        async with ClientSession(timeout=ClientTimeout(total=REQUEST_TIMEOUT)) as sess:
-            ws_client = await sess.ws_connect(target, headers={
-                k:v for k,v in request.headers.items() if k.lower() not in ["host","origin"]
-            })
-            async def relay(src, dst):
-                async for msg in src:
-                    if msg.type == WSMsgType.TEXT:
-                        await dst.send_str(msg.data)
-                    elif msg.type == WSMsgType.BINARY:
-                        await dst.send_bytes(msg.data)
-            await asyncio.gather(relay(ws_srv, ws_client), relay(ws_client, ws_srv))
-        await ws_srv.close()
+        target_url = (site.backend_url if request.path.startswith("/api/") else site.frontend_url)
+        target_ws_url = target_url.replace("http://", "ws://").replace("https://", "wss://")
+
+        async with ClientSession() as session:
+            async with session.ws_connect(f"{target_ws_url.rstrip('/')}{request.path_qs}") as ws_client:
+                # Relay messages in both directions
+                async def relay_to_client():
+                    async for msg in ws_client:
+                        if msg.type == WSMsgType.TEXT:
+                            await ws_srv.send_str(msg.data)
+                        elif msg.type == WSMsgType.BINARY:
+                            await ws_srv.send_bytes(msg.data)
+
+                async def relay_to_server():
+                    async for msg in ws_srv:
+                        if msg.type == WSMsgType.TEXT:
+                            await ws_client.send_str(msg.data)
+                        elif msg.type == WSMsgType.BINARY:
+                            await ws_client.send_bytes(msg.data)
+
+                await asyncio.gather(relay_to_client(), relay_to_server())
         return ws_srv
-
-    async def health_check(self, request):
-        info = {
-            "status": "healthy",
-            "port": request.app["port"],
-            "sites": [{"host":h,"name":s.name} for h,s in request.app["hosts_config"].items()],
-            "time": asyncio.get_event_loop().time()
-        }
-        return web.json_response(info)
-
-    async def metrics_endpoint(self, request):
-        return web.json_response({
-            "active_sites": sum(len(h) for h in self.sites.values()),
-            "listeners": len(self.runners),
-            "redis": self.redis_client is not None
-        })
 
     async def start(self):
         await init_database()
         await self.init_redis()
-        await self.load_sites()
         self.pattern_task = asyncio.create_task(self._pattern_updater())
         self.running = True
+
         loop = asyncio.get_event_loop()
-        loop.add_signal_handler(signal.SIGINT, lambda: asyncio.create_task(self.stop()))
-        loop.add_signal_handler(signal.SIGTERM, lambda: asyncio.create_task(self.stop()))
-        tasks = [asyncio.create_task(self._polling_task())]
-        if self.redis_client:
-            tasks.extend([
-                asyncio.create_task(self._redis_listener()),
-                asyncio.create_task(cleanup_old_cache_task(REDIS_URL))
-            ])
-        await asyncio.gather(*tasks)
+        stop = loop.create_future()
+        loop.add_signal_handler(signal.SIGINT, stop.set_result, None)
+        loop.add_signal_handler(signal.SIGTERM, stop.set_result, None)
+
+        await self.load_sites()
+
+        await stop
+        await self.stop()
 
     async def _pattern_updater(self):
         while self.running:
             try:
-                logger.info("Pattern updater: fetching patterns from DB")
                 await fetch_patterns_from_db()
             except Exception:
                 logger.exception("Pattern updater crashed")
             await asyncio.sleep(POLL_INTERVAL)
 
-    async def _polling_task(self):
-        while self.running:
-            await asyncio.sleep(POLL_INTERVAL)
-            await self.load_sites()
-
-    async def _redis_listener(self):
-        sub = self.redis_client.pubsub()
-        await sub.subscribe("config_update")
-        async for msg in sub.listen():
-            if msg["type"] == "message":
-                await self.load_sites()
-
     async def stop(self):
         self.running = False
-        if self.client_session:
-            await self.client_session.close()
-        if self.redis_client:
-            await self.redis_client.close()
-        for port in list(self.runners):
-            await self.stop_listener(port)
         if self.pattern_task:
             self.pattern_task.cancel()
-        logger.info("WAF stopped")
+        if self.client_session:
+            await self.client_session.close()
+        for port in list(self.runners):
+            await self.stop_listener(port)
+        if self.redis_client:
+            await self.redis_client.close()
+        logger.info("WAF stopped gracefully.")
+
 
 async def main():
     manager = WAFManager()
     try:
         await manager.start()
     except Exception:
-        logger.exception("Fatal error in WAF")
+        logger.exception("Fatal error in WAF Manager")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

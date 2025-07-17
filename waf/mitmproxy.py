@@ -1,175 +1,114 @@
-from mitmproxy import http
+import asyncio
 import logging
 import json
 import time
-from typing import Dict, Any
-import asyncio
-import redis.asyncio as redis
 import os
-from collections import deque
+import re
+from typing import Dict, List
+from mitmproxy import http
 
-# MITMProxy addon for WAF traffic analysis (NO FILTERING - ANALYSIS ONLY)
-logging.basicConfig(level=logging.INFO)
+# --- Database Imports and Setup ---
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
+
+# <<< FIX: Import the model from the shared file to avoid duplication
+from models import MaliciousPattern
+
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-class WAFAnalysisAddon:
-    """
-    MITMProxy addon for traffic analysis and logging.
-    This does NOT block traffic - only analyzes and logs for monitoring.
-    """
-    
+# <<< FIX: Removed the fragile string replacement. Rely on the environment variable directly.
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    # Fail fast if the database URL isn't configured.
+    raise ValueError("DATABASE_URL environment variable is not set for mitmproxy!")
+
+engine = create_async_engine(DATABASE_URL, echo=False)
+async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+# --- End of Database Setup ---
+
+
+class SyncedAnalysisAddon:
     def __init__(self):
-        self.request_count = 0
-        self.blocked_patterns = []
-        self.traffic_log = deque(maxlen=1000)  # Fixed size queue
-        
-    def request(self, flow: http.HTTPFlow) -> None:
-        """Analyze incoming requests - NO BLOCKING."""
-        self.request_count += 1
-        client_ip = flow.client_conn.address[0] if flow.client_conn.address else "unknown"
-        
-        # Log request details
-        request_data = {
-            "timestamp": time.time(),
-            "client_ip": client_ip,
-            "method": flow.request.method,
-            "url": flow.request.pretty_url,
-            "path": flow.request.path,
-            "headers": dict(flow.request.headers),
-            "content_length": len(flow.request.content) if flow.request.content else 0,
-            "user_agent": flow.request.headers.get("User-Agent", ""),
-            "request_id": self.request_count
-        }
-        
-        # Analyze for suspicious patterns (for logging only)
-        suspicious_indicators = self._analyze_request(flow.request)
-        if suspicious_indicators:
-            request_data["suspicious_patterns"] = suspicious_indicators
-            logger.warning(f"[ANALYSIS] Suspicious request detected from {client_ip}: {suspicious_indicators}")
-        
-        # Log to file or send to monitoring system
-        logger.info(f"[ANALYSIS] {flow.request.method} {flow.request.pretty_url} from {client_ip}")
-        
-        # Store in traffic log (automatic size management with deque)
-        self.traffic_log.append(request_data)
+        self.pattern_cache: Dict[str, List[re.Pattern]] = {}
+        self.pattern_fetch_interval = 60  # Fetch every 60 seconds
 
-    def response(self, flow: http.HTTPFlow) -> None:
-        """Analyze responses."""
-        if flow.response:
-            # Log response details
-            response_data = {
-                "status_code": flow.response.status_code,
-                "content_type": flow.response.headers.get("Content-Type", ""),
-                "content_length": len(flow.response.content) if flow.response.content else 0,
-                "blocked_by_waf": "X-WAF-Block-Reason" in flow.response.headers
-            }
-            
-            if response_data["blocked_by_waf"]:
-                block_reason = flow.response.headers.get("X-WAF-Block-Reason", "unknown")
-                logger.info(f"[ANALYSIS] Request blocked by WAF: {block_reason}")
-            
-            # Add response timing
-            if hasattr(flow, 'response_timestamp') and hasattr(flow, 'request_timestamp'):
-                response_data["response_time_ms"] = (flow.response_timestamp - flow.request_timestamp) * 1000
+        # mitmproxy provides its own event loop, which we should use.
+        self.loop = asyncio.get_running_loop()
+        self.fetch_task = self.loop.create_task(self.pattern_updater())
 
-    def _analyze_request(self, request) -> list:
-        """Analyze request for suspicious patterns (analysis only)."""
-        suspicious = []
-        
-        # Get request content
-        content_to_check = []
-        
-        # Add body content
-        if request.content:
+    async def fetch_patterns_from_db(self):
+        """Fetches the latest WAF rules from the database."""
+        async with async_session() as session:
+            result = await session.execute(select(MaliciousPattern))
+            patterns = result.scalars().all()
+
+        cache: Dict[str, List[re.Pattern]] = {}
+        for p in patterns:
             try:
-                body_text = request.get_text(strict=False)
-                if body_text:
-                    content_to_check.append(("body", body_text))
-            except:
+                compiled = re.compile(p.pattern, re.IGNORECASE | re.DOTALL)
+                cache.setdefault(p.type.lower(), []).append(compiled)
+            except re.error as e:
                 pass
-        
-        # Add URL path
-        content_to_check.append(("path", request.path))
-        
-        # Add query parameters
-        if request.query:
-            for key, value in request.query.items():
-                content_to_check.append(("query", f"{key}={value}"))
-        
-        # Add relevant headers
-        for header_name, header_value in request.headers.items():
-            if header_name.lower() in ['cookie', 'authorization', 'x-forwarded-for']:
-                content_to_check.append(("header", f"{header_name}: {header_value}"))
-        
-        # Check for suspicious patterns
-        suspicious_patterns = {
-            "xss": [
-                r'<script[^>]*>',
-                r'javascript:',
-                r'on\w+\s*=',
-                r'alert\(',
-                r'document\.cookie'
-            ],
-            "sqli": [
-                r'\bunion\b.*\bselect\b',
-                r'\bor\b.*1\s*=\s*1',
-                r'\bdrop\b.*\btable\b',
-                r'--',
-                r"'.*or.*'"
-            ],
-            "path_traversal": [
-                r'\.\./.*\.\.',
-                r'\.\.\\.*\.\.',
-                r'/etc/passwd',
-                r'\\windows\\system32'
-            ],
-            "command_injection": [
-                r';\s*(cat|ls|pwd|whoami)',
-                r'\|\s*(cat|ls|pwd|whoami)',
-                r'`.*`',
-                r'\$\(.*\)'
-            ]
-        }
-        
-        import re
-        
-        for content_type, content in content_to_check:
-            content_lower = content.lower()
-            
-            for attack_type, patterns in suspicious_patterns.items():
-                for pattern in patterns:
-                    if re.search(pattern, content_lower, re.IGNORECASE):
-                        suspicious.append({
-                            "type": attack_type,
-                            "pattern": pattern,
-                            "location": content_type,
-                            "matched_content": content[:100] + "..." if len(content) > 100 else content
-                        })
-        
-        return suspicious
 
-    def get_stats(self) -> Dict[str, Any]:
-        """Get traffic analysis statistics."""
-        total_requests = len(self.traffic_log)
-        suspicious_requests = len([r for r in self.traffic_log if "suspicious_patterns" in r])
-        
-        return {
-            "total_requests": total_requests,
-            "suspicious_requests": suspicious_requests,
-            "suspicious_percentage": (suspicious_requests / total_requests * 100) if total_requests > 0 else 0,
-            "recent_requests": self.traffic_log[-10:] if self.traffic_log else []
+        self.pattern_cache = cache
+        pass
+
+    async def pattern_updater(self):
+        """Background task to periodically refresh the patterns."""
+        while True:
+            try:
+                await self.fetch_patterns_from_db()
+            except Exception as e:
+                # Be specific about the error
+                logger.error(f"DB SYNC: Unhandled exception during pattern fetch: {e}", exc_info=True)
+            await asyncio.sleep(self.pattern_fetch_interval)
+
+    def _analyze_content(self, content: str) -> List[Dict[str, str]]:
+        """Analyzes a single piece of content against the synchronized patterns."""
+        suspicious_hits = []
+        if not self.pattern_cache or not content:
+            return suspicious_hits
+
+        for attack_type, patterns in self.pattern_cache.items():
+            for rx in patterns:
+                if rx.search(content):
+                    suspicious_hits.append({
+                        "type": attack_type,
+                        "pattern_matched": rx.pattern
+                    })
+        return suspicious_hits
+
+    def request(self, flow: http.HTTPFlow) -> None:
+        """Analyze incoming requests using synchronized rules. This is a sync method."""
+        client_ip = flow.client_conn.address[0] if flow.client_conn.address else "unknown"
+
+        parts_to_check = {
+            "PATH": flow.request.path,
+            "QUERY": flow.request.query_string,
+            "BODY": flow.request.get_text(strict=False),
+            **{f"HEADER_{k}": v for k, v in flow.request.headers.items()}
         }
 
-# Global addon instance
-addons = [WAFAnalysisAddon()]
+        all_suspicious_indicators = []
+        for location, content in parts_to_check.items():
+            if content:
+                indicators = self._analyze_content(content)
+                if indicators:
+                    for ind in indicators:
+                        ind["location"] = location
+                    all_suspicious_indicators.extend(indicators)
 
-# Entry points for mitmproxy
-def request(flow: http.HTTPFlow) -> None:
-    """Entry point for mitmproxy request processing."""
-    for addon in addons:
-        addon.request(flow)
+        if all_suspicious_indicators:
+            logger.warning(
+                f"[PASSIVE_ANALYSIS] Suspicious request detected from {client_ip} "
+                f"to {flow.request.pretty_host}. "
+                f"Indicators: {json.dumps(all_suspicious_indicators)}"
+            )
 
-def response(flow: http.HTTPFlow) -> None:
-    """Entry point for mitmproxy response processing."""
-    for addon in addons:
-        addon.response(flow)
+
+# addons list is the entry point for mitmproxy
+addons = [SyncedAnalysisAddon()]

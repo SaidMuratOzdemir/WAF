@@ -1,5 +1,4 @@
 # api/app/routers/sites.py
-
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -43,7 +42,11 @@ async def create_site(
             detail=f"Site with port {site.port} and host '{site.host}' already exists."
         )
 
-    new_site = SiteModel(**site.model_dump())
+    data = site.model_dump()
+    data["frontend_url"] = str(data["frontend_url"])
+    data["backend_url"] = str(data["backend_url"])
+
+    new_site = SiteModel(**data)
     session.add(new_site)
     await session.commit()
     await session.refresh(new_site)
@@ -66,7 +69,6 @@ async def update_site(
 
     old_port = db_site.port
 
-    # Check for conflicts if port/host are changing
     if db_site.port != site_update.port or db_site.host != site_update.host:
         conflict = await session.execute(
             select(SiteModel).filter_by(port=site_update.port, host=site_update.host)
@@ -77,13 +79,16 @@ async def update_site(
                 f"Site with port {site_update.port} and host '{site_update.host}' already exists."
             )
 
-    for key, value in site_update.model_dump().items():
+    update_data = site_update.model_dump()
+    update_data["frontend_url"] = str(update_data["frontend_url"])
+    update_data["backend_url"] = str(update_data["backend_url"])
+
+    for key, value in update_data.items():
         setattr(db_site, key, value)
 
     await session.commit()
     await session.refresh(db_site)
 
-    # Notify workers of config changes
     await redis_publisher.publish_config_update(old_port, redis_client)
     if old_port != site_update.port:
         await redis_publisher.publish_config_update(site_update.port, redis_client)

@@ -33,6 +33,7 @@ services:
       context: .
       dockerfile: ./waf/Dockerfile
     ports:
+      - "80:80"
       - "8081:8081"
       - "8082:8082"
       - "8083:8083"

@@ -24,7 +24,7 @@ RUN chown -R waf:waf /app
 USER waf
 
 # Expose ports (dynamically managed by the app)
-EXPOSE 8081 8082 8083 8084 8085
+EXPOSE 80 8081 8082 8083 8084 8085
 
 # Health check can remain if you have a default port like 8081 running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

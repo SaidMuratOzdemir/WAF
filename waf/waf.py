@@ -132,19 +132,41 @@ class WAFManager:
             self.client_session = ClientSession(timeout=ClientTimeout(total=REQUEST_TIMEOUT))
 
         headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
-        # This routing logic is from the original code. It determines whether to send to frontend or backend.
+
         target = (site.backend_url if request.path.startswith("/api/") else site.frontend_url)
         if "localhost" in target:
             target = target.replace("localhost", "host.docker.internal")
         url = f"{target.rstrip('/')}{request.path_qs}"
 
         async with self.client_session.request(
-                request.method, url, headers=headers, data=body, allow_redirects=False
+                method=request.method,
+                url=url,
+                headers=headers,
+                data=body,
+                allow_redirects=False
         ) as resp:
-            data = await resp.read()
-            hdrs = dict(resp.headers)
-            hdrs.update({"X-WAF-Protected": "true", "X-WAF-Site": site.name})
-            return web.Response(body=data, status=resp.status, headers=hdrs)
+
+            # Güvenli headers kopyası
+            excluded = {"Content-Length", "Transfer-Encoding", "Content-Encoding", "Connection", "Keep-Alive"}
+            response = web.StreamResponse(status=resp.status)
+            for k, v in resp.headers.items():
+                if k not in excluded:
+                    response.headers[k] = v
+
+            # WAF metadata header'larını ekle
+            response.headers["X-WAF-Protected"] = "true"
+            response.headers["X-WAF-Site"] = site.name
+
+            await response.prepare(request)
+
+            while True:
+                chunk = await resp.content.read(4096)
+                if not chunk:
+                    break
+                await response.write(chunk)
+
+            await response.write_eof()
+            return response
 
     async def handle_websocket(self, request: web.Request, site: Site):
         # This websocket logic is also from the original code.

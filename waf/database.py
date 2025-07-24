@@ -6,6 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, Boolean, select, UniqueConstraint
 from typing import Dict, List, Optional
 import logging
+from dotenv import load_dotenv
 
 # Base class for SQLAlchemy models
 Base = declarative_base()
@@ -29,9 +30,10 @@ class Site(Base):
         {'extend_existing': True}
     )
 
-# Database configuration - Use PostgreSQL in production, SQLite for development
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://waf:waf@localhost:5432/waf")
-
+# Veritabanı bağlantı URL'si (Docker Compose ortamında servis adı kullanılmalı)
+DATABASE_URL = os.getenv("DATABASE_URL") or (
+    f"postgresql+asyncpg://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@postgres:5432/{os.getenv('POSTGRES_DB')}"
+)
 # Create async engine
 engine = create_async_engine(DATABASE_URL, echo=False, pool_size=20, max_overflow=30)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)

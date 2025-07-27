@@ -3,7 +3,5 @@
 
 127.0.0.1    annelik.local
 127.0.0.1    api.annelik.local
-127.0.0.1    admin.annelik.local
-127.0.0.1    blog.annelik.local
-127.0.0.1    hamile.annelik.local
-127.0.0.1    bebek.annelik.local
+127.0.0.1    dvwa.local
+127.0.0.1   juiceshop.local

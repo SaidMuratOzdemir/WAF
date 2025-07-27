@@ -1,46 +1,64 @@
+version: '3.8'
+
 services:
   postgres:
     image: postgres:16
+    container_name: waf-postgres
     environment:
-      POSTGRES_USER: waf
-      POSTGRES_PASSWORD: waf
-      POSTGRES_DB: waf
-    ports:
-      - "5432:5432"
+      - POSTGRES_DB=waf
+      - POSTGRES_USER=waf
+      - POSTGRES_PASSWORD=waf
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U waf -d waf"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - waf-core-net
+    restart: unless-stopped
 
   redis:
     image: redis:7
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
+    container_name: waf-redis
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - waf-core-net
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: ./api/Dockerfile
+    container_name: waf-api
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
+      - REDIS_URL=redis://redis:6379
+      - SECRET_KEY=${SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - waf-core-net
+    restart: unless-stopped
 
   waf:
-    build: 
+    build:
       context: .
       dockerfile: ./waf/Dockerfile
     ports:
       - "80:80"
-      - "8081:8081"
-      - "8082:8082"
-      - "8083:8083"
-      - "8084:8084"
-      - "8085:8085"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
       - REDIS_URL=redis://redis:6379
       - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
       - DEBUG=true
@@ -50,6 +68,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - waf-core-net
+      - dvwa-net
+      - juiceshop-net
+      - hr-system-net
     restart: unless-stopped
 
   mitmproxy:
@@ -60,42 +83,45 @@ services:
       - "8080:8080"
       - "8888:8888"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
       - REDIS_URL=redis://redis:6379
       - DEBUG=true
-    # <<< THE FINAL FIX IS HERE
     command: >
       mitmweb
       --web-host 0.0.0.0
       --web-port 8080
       --listen-port 8888
       --mode reverse:http://waf:8081
-      --set keep_host_header=true 
+      --set keep_host_header=true
       -s /app/mitmproxy.py
     depends_on:
-      waf:
-        condition: service_started
-      redis:
-        condition: service_healthy
+      - waf
+    networks:
+      - waf-core-net
+      - dvwa-net
+      - juiceshop-net
+      - hr-system-net
     restart: unless-stopped
-
-  api:
-    build: 
-      context: ./api
-      dockerfile: Dockerfile
-    ports:
-      - "8001:8001"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=${JWT_SECRET}
-      - PORT=8001
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
 volumes:
   postgres_data:
-  redis_data:
+
+networks:
+  waf-core-net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.99.1.0/24
+
+  dvwa-net:
+    external: true
+    name: dvwa-net
+
+  juiceshop-net:
+    external: true
+    name: juiceshop-net
+
+  hr-system-net:
+    external: true
+    name: hr-system-net

@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  dvwa:
+    image: vulnerables/web-dvwa
+    # ports:
+    #   - "80:80" # Not exposed to the host
+    networks:
+      default:
+        ipv4_address: 10.99.10.10 # Static IP within its network
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge
+    name: dvwa_default
+    ipam:
+      config:
+        - subnet: 10.99.10.0/24

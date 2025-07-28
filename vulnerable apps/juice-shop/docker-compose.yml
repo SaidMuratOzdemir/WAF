@@ -13,7 +13,7 @@ services:
 networks:
   default:
     driver: bridge
-    name: juiceshop_default
+    name: juiceshop-net
     ipam:
       config:
         - subnet: 10.99.11.0/24

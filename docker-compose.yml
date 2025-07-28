@@ -1,9 +1,11 @@
-version: '3.8'
+version: "3.9"
 
 services:
   postgres:
     image: postgres:16
     container_name: waf-postgres
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_DB=waf
       - POSTGRES_USER=waf
@@ -33,15 +35,15 @@ services:
 
   api:
     build:
-      context: .
-      dockerfile: ./api/Dockerfile
-    container_name: waf-api
+      context: ./api
+      dockerfile: Dockerfile
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
       - REDIS_URL=redis://redis:6379
-      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - PORT=8001
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,10 +84,6 @@ services:
     ports:
       - "8080:8080"
       - "8888:8888"
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
-      - REDIS_URL=redis://redis:6379
-      - DEBUG=true
     command: >
       mitmweb
       --web-host 0.0.0.0
@@ -94,6 +92,10 @@ services:
       --mode reverse:http://waf:8081
       --set keep_host_header=true
       -s /app/mitmproxy.py
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=true
     depends_on:
       - waf
     networks:

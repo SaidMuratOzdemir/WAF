@@ -85,13 +85,25 @@ networks:
   # Core (DB/Redis/API <-> WAF)
   waf-core-net:
     external: true
+    ipam:
+      config:
+        - subnet: 10.99.0.0/24
 
   # Uygulama ağları — WAF bunu OLUŞTURUR (external değil)
   dvwa-net:
     external: true
+    ipam:
+      config:
+        - subnet: 10.99.1.0/24
 
   juiceshop-net:
     external: true
+    ipam:
+      config:
+        - subnet: 10.99.2.0/24
 
   hr-system-net:
     external: true
+    ipam:
+      config:
+        - subnet: 10.99.3.0/24

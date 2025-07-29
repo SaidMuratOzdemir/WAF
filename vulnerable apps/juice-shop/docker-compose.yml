@@ -1,19 +1,17 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  juice-shop:
+  juice_shop_app:
     image: bkimminich/juice-shop
-    # ports:
-    #  - "3000:3000" # Not exposed to the host
+    environment:
+      - PORT=80          # 3000 yerine 80’den dinle
+    # Host'a port yok; yalnızca iç ağ
     networks:
-      default:
-        ipv4_address: 10.99.11.10 # Static IP within its network
+      juiceshop-net:
+        aliases: ["juiceshop-internal"]  # WAF bu isimle ulaşacak
     restart: unless-stopped
 
 networks:
-  default:
-    driver: bridge
+  juiceshop-net:
+    external: true
     name: juiceshop-net
-    ipam:
-      config:
-        - subnet: 10.99.11.0/24

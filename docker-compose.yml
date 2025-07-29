@@ -3,9 +3,6 @@ version: "3.9"
 services:
   postgres:
     image: postgres:16
-    container_name: waf-postgres
-    ports:
-      - "5432:5432"
     environment:
       - POSTGRES_DB=waf
       - POSTGRES_USER=waf
@@ -13,24 +10,21 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U waf -d waf"]
+      test: [ "CMD-SHELL", "pg_isready -U waf -d waf" ]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - waf-core-net
+    networks: [ waf-core-net ]
     restart: unless-stopped
 
   redis:
     image: redis:7
-    container_name: waf-redis
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - waf-core-net
+    networks: [ waf-core-net ]
     restart: unless-stopped
 
   api:
@@ -44,37 +38,25 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - PORT=8001
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - waf-core-net
+    depends_on: [ postgres, redis ]
+    networks: [ waf-core-net ]
     restart: unless-stopped
 
   waf:
     build:
       context: .
       dockerfile: ./waf/Dockerfile
-    ports:
-      - "80:80"
+    # Sadece WAF host'a açılır:
+    ports: [ "80:80" ]
     environment:
       - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
       - REDIS_URL=redis://redis:6379
       - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
       - DEBUG=true
       - POLL_INTERVAL=5
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - waf-core-net
-      - dvwa-net
-      - juiceshop-net
-      - hr-system-net
+    depends_on: [ postgres, redis, api ]
+    # WAF tüm app ağlarında da olacak:
+    networks: [ waf-core-net, dvwa-net, juiceshop-net, hr-system-net ]
     restart: unless-stopped
 
   mitmproxy:
@@ -85,45 +67,35 @@ services:
       - "8080:8080"
       - "8888:8888"
     command: >
-      mitmweb
-      --web-host 0.0.0.0
-      --web-port 8080
-      --listen-port 8888
-      --mode reverse:http://waf:8081
-      --set keep_host_header=true
-      -s /app/mitmproxy.py
+      mitmweb --web-host 0.0.0.0 --web-port 8080
+      --listen-port 8888 --mode reverse:http://waf:8081
+      --set keep_host_header=true -s /app/mitmproxy.py
     environment:
       - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
       - REDIS_URL=redis://redis:6379
       - DEBUG=true
-    depends_on:
-      - waf
-    networks:
-      - waf-core-net
-      - dvwa-net
-      - juiceshop-net
-      - hr-system-net
+    depends_on: [ waf ]
+    networks: [ waf-core-net, dvwa-net, juiceshop-net, hr-system-net ]
     restart: unless-stopped
 
 volumes:
   postgres_data:
 
 networks:
+  # Core (DB/Redis/API <-> WAF)
   waf-core-net:
     driver: bridge
-    ipam:
-      driver: default
-      config:
-        - subnet: 10.99.1.0/24
+    ipam: { config: [ { subnet: 10.99.1.0/24 } ] }
 
+  # Uygulama ağları — WAF bunu OLUŞTURUR (external değil)
   dvwa-net:
-    external: true
-    name: dvwa-net
+    driver: bridge
+    ipam: { config: [ { subnet: 10.99.10.0/24 } ] }
 
   juiceshop-net:
-    external: true
-    name: juiceshop-net
+    driver: bridge
+    ipam: { config: [ { subnet: 10.99.11.0/24 } ] }
 
-  hr-system-net:
-    external: true
-    name: hr-system-net
+  hr-system-net: # /Users/murat/PycharmProjects/HumanResourcesSystem/DjangoProject/docker-compose.yml
+    driver: bridge
+    ipam: { config: [ { subnet: 10.99.12.0/24 } ] }

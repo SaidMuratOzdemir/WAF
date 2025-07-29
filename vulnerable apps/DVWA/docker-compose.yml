@@ -1,19 +1,15 @@
-version: '3.8'
+version: "3.9"
 
 services:
-  dvwa:
+  dvwa_app:
     image: vulnerables/web-dvwa
-    # ports:
-    #   - "80:80" # Not exposed to the host
+    # Host'a port yok; yalnızca iç ağ
     networks:
-      default:
-        ipv4_address: 10.99.10.10 # Static IP within its network
+      dvwa-net:
+        aliases: ["dvwa-internal"]  # WAF bu isimle ulaşacak
     restart: unless-stopped
 
 networks:
-  default:
-    driver: bridge
-    name: dvwa-net
-    ipam:
-      config:
-        - subnet: 10.99.10.0/24
+  dvwa-net:
+    external: true
+    name: waf_dvwa-net

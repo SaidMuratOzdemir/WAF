@@ -84,18 +84,14 @@ volumes:
 networks:
   # Core (DB/Redis/API <-> WAF)
   waf-core-net:
-    driver: bridge
-    ipam: { config: [ { subnet: 10.99.1.0/24 } ] }
+    external: true
 
   # Uygulama ağları — WAF bunu OLUŞTURUR (external değil)
   dvwa-net:
-    driver: bridge
-    ipam: { config: [ { subnet: 10.99.10.0/24 } ] }
+    external: true
 
   juiceshop-net:
-    driver: bridge
-    ipam: { config: [ { subnet: 10.99.11.0/24 } ] }
+    external: true
 
-  hr-system-net: # /Users/murat/PycharmProjects/HumanResourcesSystem/DjangoProject/docker-compose.yml
-    driver: bridge
-    ipam: { config: [ { subnet: 10.99.12.0/24 } ] }
+  hr-system-net:
+    external: true

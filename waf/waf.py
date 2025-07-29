@@ -136,7 +136,13 @@ class WAFManager:
         target = (site.backend_url if request.path.startswith("/api/") else site.frontend_url)
         if "localhost" in target:
             target = target.replace("localhost", "host.docker.internal")
-        url = f"{target.rstrip('/')}{request.path_qs}"
+        url = f"{target.rstrip('/')}" + request.path_qs
+
+        # Set Host header to backend DNS name
+        from urllib.parse import urlparse
+        backend_host = urlparse(target).hostname
+        if backend_host:
+            headers["Host"] = backend_host
 
         async with self.client_session.request(
                 method=request.method,

@@ -4,6 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import redis.asyncio as redis
+import aiohttp
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_session
 from app.models import Site as SiteModel
@@ -15,14 +20,67 @@ from app.services import redis_publisher
 router = APIRouter(prefix="/sites", tags=["Sites"])
 
 
+
+
+async def check_external_site_health(host: str, port: int = 80) -> str:
+    """Check if a site is healthy by making HTTP request through WAF."""
+    try:
+        logger.info(f"Health check starting for {host}:{port}")
+        timeout = aiohttp.ClientTimeout(total=5)  # 5 second timeout
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            # Use WAF as proxy to check the site
+            url = f"http://waf:80/"
+            headers = {"Host": host}
+            logger.info(f"Making request to WAF: {url} with Host: {host}")
+            async with session.get(url, headers=headers) as response:
+                logger.info(f"Response status: {response.status}")
+                if response.status < 500:
+                    logger.info(f"Site {host}:{port} is HEALTHY")
+                    return 'healthy'
+                else:
+                    logger.warning(f"Site {host}:{port} is UNHEALTHY (status: {response.status})")
+                    return 'unhealthy'
+    except Exception as e:
+        logger.error(f"Error checking {host}:{port}: {str(e)}")
+        return 'unhealthy'
+
+async def check_site_health(site) -> str:
+    """Check if a site is healthy by making HTTP request to the host and port."""
+    try:
+        logger.info(f"Starting health check for site: {site.name} ({site.host}:{site.port})")
+        # Use the site's host and port to check health
+        result = await check_external_site_health(site.host, site.port)
+        logger.info(f"Health check result for {site.name}: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Error in check_site_health for {site.name}: {str(e)}")
+        return 'unhealthy'
+
 @router.get("", response_model=List[SiteSchema])
 async def list_sites(
         session: AsyncSession = Depends(get_session),
         current_user: UserInDB = Depends(get_current_admin_user)
 ):
-    """List all protected sites."""
+    """List all protected sites with health status."""
     result = await session.execute(select(SiteModel).order_by(SiteModel.id))
-    return result.scalars().all()
+    sites = result.scalars().all()
+    
+    # Check health status for each site concurrently
+    logger.info(f"Starting health checks for {len(sites)} sites...")
+    health_tasks = []
+    for site in sites:
+        task = check_site_health(site)
+        health_tasks.append((site, task))
+    
+    # Run health checks concurrently and add health_status to each site
+    for site, task in health_tasks:
+        logger.info(f"Waiting for health check result for {site.name}...")
+        site.health_status = await task
+        logger.info(f"Health status for {site.name}: {site.health_status}")
+    
+    logger.info(f"All health checks completed!")
+    
+    return sites
 
 
 @router.post("", response_model=SiteSchema, status_code=status.HTTP_201_CREATED)

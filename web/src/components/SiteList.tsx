@@ -22,8 +22,9 @@ import {
     DialogTitle,
     Snackbar,
     Skeleton,
+    Tooltip,
 } from '@mui/material';
-import { Delete as DeleteIcon, Edit as EditIcon } from '@mui/icons-material';
+import { Delete as DeleteIcon, Edit as EditIcon, Circle as CircleIcon } from '@mui/icons-material';
 import type { Site } from '../types/Site';
 import { fetchSites, deleteSite } from '../api/sites';
 import EditSiteModal from './EditSiteModal';
@@ -180,7 +181,14 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                 <TableRow key={index}>
                     {[...Array(8)].map((_, cellIndex) => (
                         <TableCell key={cellIndex}>
-                            <Skeleton animation="wave" />
+                            {cellIndex === 0 ? (
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Skeleton variant="circular" width={12} height={12} />
+                                    <Skeleton animation="wave" width={40} />
+                                </Box>
+                            ) : (
+                                <Skeleton animation="wave" />
+                            )}
                         </TableCell>
                     ))}
                 </TableRow>
@@ -236,7 +244,28 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
                         ) : (
                             paginatedSites.map(site => (
                                 <TableRow key={site.id}>
-                                    <TableCell>{site.port}</TableCell>
+                                    <TableCell>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Tooltip 
+                                                title={
+                                                    site.health_status === 'healthy' ? 'Site is healthy and responding' :
+                                                    site.health_status === 'unhealthy' ? 'Site is down or not responding' :
+                                                    site.health_status ? 'Health status unknown' : 'No health data available'
+                                                }
+                                                arrow
+                                            >
+                                                <CircleIcon 
+                                                    sx={{ 
+                                                        fontSize: 12,
+                                                        color: site.health_status === 'healthy' ? 'success.main' : 
+                                                               site.health_status === 'unhealthy' ? 'error.main' : 
+                                                               site.health_status ? 'warning.main' : 'grey.500'
+                                                    }} 
+                                                />
+                                            </Tooltip>
+                                            {site.port}
+                                        </Box>
+                                    </TableCell>
                                     <TableCell>{site.host}</TableCell>
                                     <TableCell>{site.name}</TableCell>
                                     <TableCell>{site.frontend_url}</TableCell>

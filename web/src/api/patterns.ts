@@ -36,7 +36,7 @@ export async function addPattern(pattern: PatternCreate): Promise<Pattern> {
 export async function addPatternsFromTxt(file: File, type: PatternType): Promise<PatternUploadResult> {
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('type', type);
+  formData.append('pattern_type', type);
   return apiFetch('/patterns', { method: 'POST', body: formData });
 }
 

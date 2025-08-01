@@ -44,6 +44,7 @@ class SiteCreate(SiteBase):
 
 class Site(SiteBase):
     id: int
+    health_status: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 # --- Malicious Pattern Schemas ---

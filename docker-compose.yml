@@ -4,11 +4,13 @@ services:
   postgres:
     image: postgres:16
     environment:
-      - POSTGRES_DB=waf
-      - POSTGRES_USER=waf
-      - POSTGRES_PASSWORD=waf
+      - POSTGRES_DB= waf
+      - POSTGRES_USER= waf
+      - POSTGRES_PASSWORD= waf
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+        - "5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U waf -d waf" ]
       interval: 5s

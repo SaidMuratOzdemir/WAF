@@ -40,6 +40,7 @@ const PatternManagement: React.FC = () => {
   const [uploadResult, setUploadResult] = useState<PatternUploadResult | null>(null);
   const [txtFile, setTxtFile] = useState<File | null>(null);
   const [openDelete, setOpenDelete] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
+  const [uploadPatternType, setUploadPatternType] = useState<PatternType>(PatternType.CUSTOM);
 
   // react-hook-form
   const { control, handleSubmit, reset } = useForm<PatternFormData>({ defaultValues: defaultFormValues });
@@ -122,9 +123,10 @@ const PatternManagement: React.FC = () => {
     if (!txtFile) return;
     setUploading(true);
     try {
-      const result = await addPatternsFromTxt(txtFile, filter || PatternType.CUSTOM);
+      const result = await addPatternsFromTxt(txtFile, uploadPatternType);
       setUploadResult(result);
-      setSnackbar({ open: true, message: `${result.success} pattern eklendi, ${result.failed} hata.`, severity: result.failed === 0 ? 'success' : 'error' });
+      const typeLabel = patternTypes.find(t => t.value === uploadPatternType)?.label || uploadPatternType;
+      setSnackbar({ open: true, message: `${result.success} ${typeLabel} pattern eklendi, ${result.failed} hata.`, severity: result.failed === 0 ? 'success' : 'error' });
       setTxtFile(null);
       fetchPatterns();
     } catch (e: any) {
@@ -295,7 +297,12 @@ const PatternManagement: React.FC = () => {
         </form>
       </Dialog>
       {/* Dosya ile Yükle Modal */}
-      <Dialog open={openUpload} onClose={() => setOpenUpload(false)} maxWidth="xs" fullWidth aria-label="Pattern Dosyası Yükle Modalı">
+      <Dialog open={openUpload} onClose={() => {
+        setOpenUpload(false);
+        setTxtFile(null);
+        setUploadPatternType(PatternType.CUSTOM);
+        setUploadResult(null);
+      }} maxWidth="xs" fullWidth aria-label="Pattern Dosyası Yükle Modalı">
         <DialogTitle>Pattern Dosyası Yükle</DialogTitle>
         <DialogContent>
           <Box
@@ -321,6 +328,28 @@ const PatternManagement: React.FC = () => {
             </Typography>
           </Box>
           {txtFile && <Typography mt={2}>Seçilen dosya: {txtFile.name}</Typography>}
+          <Box mt={2}>
+            <Typography variant="subtitle2" gutterBottom>Pattern Tipi:</Typography>
+            <Select
+              value={uploadPatternType}
+              onChange={(e) => setUploadPatternType(e.target.value as PatternType)}
+              fullWidth
+              size="small"
+              aria-label="Pattern Tipi Seç"
+            >
+              {patternTypes.map(t => (
+                <MenuItem key={t.value} value={t.value}>
+                  <Chip
+                    label={t.label}
+                    color={t.color as any}
+                    size="small"
+                    sx={{ mr: 1 }}
+                  />
+                  {t.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </Box>
           {uploading && <Typography mt={2}>Yükleniyor...</Typography>}
           {uploadResult && (
             <Box mt={2}>
@@ -336,7 +365,12 @@ const PatternManagement: React.FC = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenUpload(false)}>Kapat</Button>
+          <Button onClick={() => {
+            setOpenUpload(false);
+            setTxtFile(null);
+            setUploadPatternType(PatternType.CUSTOM);
+            setUploadResult(null);
+          }}>Kapat</Button>
           <Button onClick={handleTxtUpload} variant="contained" disabled={!txtFile || uploading}>Yükle</Button>
         </DialogActions>
       </Dialog>

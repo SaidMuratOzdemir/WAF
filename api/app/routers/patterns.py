@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 import io
+from datetime import datetime
 
 from app.database import get_session
 from app.models import MaliciousPattern
@@ -65,10 +66,16 @@ async def add_patterns_from_file(
     lines = io.StringIO(content.decode("utf-8")).readlines()
 
     new_patterns = []
+    current_time = datetime.utcnow()
     for line in lines:
         pattern_str = line.strip()
         if pattern_str:
-            new_patterns.append(MaliciousPattern(pattern=pattern_str, type=pattern_type))
+            new_patterns.append(MaliciousPattern(
+                pattern=pattern_str, 
+                type=pattern_type,
+                created_at=current_time,
+                updated_at=current_time
+            ))
 
     if not new_patterns:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "File is empty or contains no valid patterns.")
@@ -87,7 +94,13 @@ async def add_single_pattern(
     session: AsyncSession = Depends(get_session),
     current_user: UserInDB = Depends(get_current_admin_user)
 ):
-    new_pattern = MaliciousPattern(**pattern.model_dump())
+    current_time = datetime.utcnow()
+    pattern_data = pattern.model_dump()
+    pattern_data.update({
+        'created_at': current_time,
+        'updated_at': current_time
+    })
+    new_pattern = MaliciousPattern(**pattern_data)
     session.add(new_pattern)
     await session.commit()
     await session.refresh(new_pattern)
@@ -107,6 +120,7 @@ async def update_pattern(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Pattern not found.")
 
     update_data = pattern.model_dump(exclude_unset=True)
+    update_data['updated_at'] = datetime.utcnow()
     for field, value in update_data.items():
         setattr(db_pattern, field, value)
 

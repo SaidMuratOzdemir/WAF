@@ -8,6 +8,7 @@ export interface Site {
     xss_enabled: boolean;
     sql_enabled: boolean;
     vt_enabled: boolean;
+    health_status?: 'healthy' | 'unhealthy' | 'unknown';
 }
 
 export interface SiteCreate {

@@ -10,6 +10,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+async def restart_waf_container():
+    """Restart the WAF container to reload configuration."""
+    try:
+        logger.info("🔄 Sending restart signal to WAF...")
+        # Send HTTP request to WAF to trigger restart
+        timeout = aiohttp.ClientTimeout(total=10)  # 10 second timeout
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post("http://waf:80/waf/restart") as response:
+                if response.status == 200:
+                    logger.info("✅ WAF restart signal sent successfully")
+                    return True
+                else:
+                    logger.error(f"❌ WAF restart failed with status: {response.status}")
+                    return False
+    except Exception as e:
+        logger.error(f"❌ Error sending restart signal to WAF: {str(e)}")
+        return False
+
 from app.database import get_session
 from app.models import Site as SiteModel
 from app.schemas import SiteCreate, Site as SiteSchema, UserInDB
@@ -34,11 +52,12 @@ async def check_external_site_health(host: str, port: int = 80) -> str:
             logger.info(f"Making request to WAF: {url} with Host: {host}")
             async with session.get(url, headers=headers) as response:
                 logger.info(f"Response status: {response.status}")
-                if response.status < 500:
-                    logger.info(f"Site {host}:{port} is HEALTHY")
+                # Consider 2xx and 3xx as healthy, 4xx and 5xx as unhealthy
+                if response.status >= 200 and response.status < 400:
+                    logger.info(f"✅ Site {host}:{port} is HEALTHY (status: {response.status})")
                     return 'healthy'
                 else:
-                    logger.warning(f"Site {host}:{port} is UNHEALTHY (status: {response.status})")
+                    logger.warning(f"❌ Site {host}:{port} is UNHEALTHY (status: {response.status})")
                     return 'unhealthy'
     except Exception as e:
         logger.error(f"Error checking {host}:{port}: {str(e)}")
@@ -109,6 +128,15 @@ async def create_site(
     await session.commit()
     await session.refresh(new_site)
     await redis_publisher.publish_config_update(site.port, redis_client)
+    
+    # Restart WAF container to reload configuration
+    logger.info(f"🔄 New site '{new_site.name}' added, restarting WAF container...")
+    restart_success = await restart_waf_container()
+    if restart_success:
+        logger.info(f"✅ WAF restarted successfully after adding site '{new_site.name}'")
+    else:
+        logger.warning(f"⚠️ WAF restart failed after adding site '{new_site.name}'")
+    
     return new_site
 
 
@@ -151,6 +179,14 @@ async def update_site(
     if old_port != site_update.port:
         await redis_publisher.publish_config_update(site_update.port, redis_client)
 
+    # Restart WAF container to reload configuration
+    logger.info(f"🔄 Site '{db_site.name}' updated, restarting WAF container...")
+    restart_success = await restart_waf_container()
+    if restart_success:
+        logger.info(f"✅ WAF restarted successfully after updating site '{db_site.name}'")
+    else:
+        logger.warning(f"⚠️ WAF restart failed after updating site '{db_site.name}'")
+
     return db_site
 
 
@@ -167,6 +203,15 @@ async def delete_site(
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Site with ID {site_id} not found.")
 
     port_to_update = db_site.port
+    site_name = db_site.name
     await session.delete(db_site)
     await session.commit()
     await redis_publisher.publish_config_update(port_to_update, redis_client)
+    
+    # Restart WAF container to reload configuration
+    logger.info(f"🔄 Site '{site_name}' deleted, restarting WAF container...")
+    restart_success = await restart_waf_container()
+    if restart_success:
+        logger.info(f"✅ WAF restarted successfully after deleting site '{site_name}'")
+    else:
+        logger.warning(f"⚠️ WAF restart failed after deleting site '{site_name}'")

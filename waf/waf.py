@@ -77,6 +77,7 @@ class WAFManager:
         app["hosts_config"] = hosts
         app["waf_manager"] = self
         app.router.add_route("*", "/{path:.*}", self.handle_request)
+        app.router.add_route("POST", "/waf/restart", self.handle_restart)
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "0.0.0.0", port)
@@ -93,6 +94,10 @@ class WAFManager:
     async def handle_request(self, request: web.Request) -> web.Response:
         client_ip = request.remote or "unknown"
         body = await request.read()
+
+        # Check for restart endpoint first
+        if request.path == "/waf/restart":
+            return await self.handle_restart(request)
 
         host = request.headers.get("Host", "").split(":")[0].lower()
         site = request.app["hosts_config"].get(host)
@@ -165,14 +170,31 @@ class WAFManager:
 
             await response.prepare(request)
 
-            while True:
-                chunk = await resp.content.read(4096)
-                if not chunk:
-                    break
-                await response.write(chunk)
+            try:
+                while True:
+                    chunk = await resp.content.read(4096)
+                    if not chunk:
+                        break
+                    await response.write(chunk)
 
-            await response.write_eof()
-            return response
+                await response.write_eof()
+                return response
+            except ConnectionResetError:
+                logger.warning(f"Connection reset during proxy for {site.name}")
+                # Try to close response gracefully
+                try:
+                    await response.write_eof()
+                except:
+                    pass
+                return response
+            except Exception as e:
+                logger.error(f"Error during proxy for {site.name}: {e}")
+                # Try to close response gracefully
+                try:
+                    await response.write_eof()
+                except:
+                    pass
+                return response
 
     async def handle_websocket(self, request: web.Request, site: Site):
         # This websocket logic is also from the original code.
@@ -200,6 +222,21 @@ class WAFManager:
 
                 await asyncio.gather(relay_to_client(), relay_to_server())
         return ws_srv
+
+    async def handle_restart(self, request: web.Request) -> web.Response:
+        """Handle restart request from API."""
+        try:
+            logger.info("🔄 Restart request received from API")
+            logger.info(f"🔄 Request from: {request.remote}")
+            logger.info(f"🔄 Request headers: {dict(request.headers)}")
+            # Send restart signal to self
+            logger.info("🔄 Sending SIGTERM signal to self...")
+            os.kill(os.getpid(), signal.SIGTERM)
+            logger.info("🔄 SIGTERM signal sent successfully")
+            return web.Response(text="Restart initiated", status=200)
+        except Exception as e:
+            logger.error(f"❌ Error handling restart request: {e}")
+            return web.Response(text="Restart failed", status=500)
 
     async def start(self):
         await init_database()

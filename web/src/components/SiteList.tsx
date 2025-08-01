@@ -111,8 +111,8 @@ export const SiteList = forwardRef<SiteListRef, SiteListProps>(
 
     const handleDelete = async (site: Site) => {
         try {
-            await deleteSite(site.port);
-            setSites(sites.filter(s => s.port !== site.port));
+            await deleteSite(site.id);
+            setSites(sites.filter(s => s.id !== site.id));
             setSnackbar({
                 open: true,
                 message: `Site "${site.name}" (${site.host}:${site.port}) has been removed.`,

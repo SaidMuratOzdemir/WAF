@@ -39,18 +39,13 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                 throw new Error('Site name is required');
             }
             if (!formData.host.trim()) {
-                throw new Error('Host field is required. Please enter a domain like "api.annelik.local"');
+                throw new Error('Host field is required');
             }
             if (!formData.frontend_url.trim()) {
                 throw new Error('Frontend URL is required');
             }
             if (!formData.backend_url.trim()) {
                 throw new Error('Backend URL is required');
-            }
-            
-            // Validate port range
-            if (formData.port < 1024 || formData.port > 65535) {
-                throw new Error('Port must be between 1024 and 65535');
             }
             
             // Validate URLs
@@ -132,7 +127,6 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                         name="port"
                         value={formData.port}
                         onChange={handleChange}
-                        inputProps={{ min: 1024, max: 65535 }}
                     />
 
                     <TextField
@@ -142,9 +136,7 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                         name="host"
                         value={formData.host}
                         onChange={handleChange}
-                        placeholder="api.annelik.local or *.annelik.local"
-                        helperText="Domain to match (REQUIRED - supports wildcards like *.annelik.local)"
-                        error={formData.host.trim() === ''}
+                        placeholder="Enter host domain"
                     />
 
                     <TextField

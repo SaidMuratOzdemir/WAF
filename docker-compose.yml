@@ -61,25 +61,6 @@ services:
     networks: [ waf-core-net, dvwa-net, juiceshop-net, hr-system-net ]
     restart: unless-stopped
 
-  mitmproxy:
-    build:
-      context: .
-      dockerfile: ./waf/Dockerfile.mitm
-    ports:
-      - "8080:8080"
-      - "8888:8888"
-    command: >
-      mitmweb --web-host 0.0.0.0 --web-port 8080
-      --listen-port 8888 --mode reverse:http://waf:8081
-      --set keep_host_header=true -s /app/mitmproxy.py
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
-      - REDIS_URL=redis://redis:6379
-      - DEBUG=true
-    depends_on: [ waf ]
-    networks: [ waf-core-net, dvwa-net, juiceshop-net, hr-system-net ]
-    restart: unless-stopped
-
 volumes:
   postgres_data:
 

@@ -7,7 +7,7 @@ from aiohttp import web
 from models import Site
 from vt_cache import CachedVirusTotalClient
 from analysis import analyze_request_part
-from ip_utils import is_banned_ip
+from ip_utils import is_banned_ip, is_local_ip
 from ban import ban_and_log
 
 logger = logging.getLogger(__name__)
@@ -29,11 +29,21 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
     client_ip = request.remote or "unknown"
     redis_client = request.app['waf_manager'].redis_client
 
-    # First, check if the IP is already on the ban list.
     if redis_client and await is_banned_ip(redis_client, client_ip):
         return True, "BANNED_IP"
 
-    # Decode the body for pattern analysis.
+    if site.vt_enabled and client_ip and client_ip != "unknown" and not is_local_ip(client_ip):
+        vt_client = await get_vt_client(client_ip)
+        try:
+            vt_result = await vt_client.check_ip()
+            if getattr(vt_result, 'is_malicious', False):
+                reason = "MALICIOUS_IP_VT"
+                if redis_client:
+                    await ban_and_log(redis_client, client_ip, reason, request, body_bytes)
+                return True, reason
+        except Exception:
+            logger.exception(f"VirusTotal check failed for IP: {client_ip}")
+
     body_str = body_bytes.decode('utf-8', errors='ignore')
 
     # Consolidate all parts of the request to be scanned.
@@ -60,19 +70,6 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
                 # This is the call that triggers the ban and the detailed log entry.
                 await ban_and_log(redis_client, client_ip, reason, request, body_bytes)
             return True, reason
-
-    # If no patterns matched, check IP reputation as a final step.
-    if site.vt_enabled and client_ip and client_ip != "unknown":
-        vt_client = await get_vt_client(client_ip)
-        try:
-            vt_result = await vt_client.check_ip()
-            if getattr(vt_result, 'is_malicious', False):
-                reason = "MALICIOUS_IP_VT"
-                if redis_client:
-                    await ban_and_log(redis_client, client_ip, reason, request, body_bytes)
-                return True, reason
-        except Exception:
-            logger.exception(f"VirusTotal check failed for IP: {client_ip}")
 
     # If all checks pass, the request is clean.
     return False, ""

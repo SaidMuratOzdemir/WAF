@@ -13,19 +13,15 @@ logger = logging.getLogger(__name__)
 async def restart_waf_container():
     """Restart the WAF container to reload configuration."""
     try:
-        logger.info("🔄 Sending restart signal to WAF...")
         # Send HTTP request to WAF to trigger restart
         timeout = aiohttp.ClientTimeout(total=10)  # 10 second timeout
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post("http://waf:80/waf/restart") as response:
                 if response.status == 200:
-                    logger.info("✅ WAF restart signal sent successfully")
                     return True
                 else:
-                    logger.error(f"❌ WAF restart failed with status: {response.status}")
                     return False
     except Exception as e:
-        logger.error(f"❌ Error sending restart signal to WAF: {str(e)}")
         return False
 
 from app.database import get_session
@@ -43,36 +39,27 @@ router = APIRouter(prefix="/sites", tags=["Sites"])
 async def check_external_site_health(host: str, port: int = 80) -> str:
     """Check if a site is healthy by making HTTP request through WAF."""
     try:
-        logger.info(f"Health check starting for {host}:{port}")
         timeout = aiohttp.ClientTimeout(total=5)  # 5 second timeout
         async with aiohttp.ClientSession(timeout=timeout) as session:
             # Use WAF as proxy to check the site
             url = f"http://waf:80/"
             headers = {"Host": host}
-            logger.info(f"Making request to WAF: {url} with Host: {host}")
             async with session.get(url, headers=headers) as response:
-                logger.info(f"Response status: {response.status}")
                 # Consider 2xx and 3xx as healthy, 4xx and 5xx as unhealthy
                 if response.status >= 200 and response.status < 400:
-                    logger.info(f"✅ Site {host}:{port} is HEALTHY (status: {response.status})")
                     return 'healthy'
                 else:
-                    logger.warning(f"❌ Site {host}:{port} is UNHEALTHY (status: {response.status})")
                     return 'unhealthy'
     except Exception as e:
-        logger.error(f"Error checking {host}:{port}: {str(e)}")
         return 'unhealthy'
 
 async def check_site_health(site) -> str:
     """Check if a site is healthy by making HTTP request to the host and port."""
     try:
-        logger.info(f"Starting health check for site: {site.name} ({site.host}:{site.port})")
         # Use the site's host and port to check health
         result = await check_external_site_health(site.host, site.port)
-        logger.info(f"Health check result for {site.name}: {result}")
         return result
     except Exception as e:
-        logger.error(f"Error in check_site_health for {site.name}: {str(e)}")
         return 'unhealthy'
 
 @router.get("", response_model=List[SiteSchema])
@@ -85,7 +72,6 @@ async def list_sites(
     sites = result.scalars().all()
     
     # Check health status for each site concurrently
-    logger.info(f"Starting health checks for {len(sites)} sites...")
     health_tasks = []
     for site in sites:
         task = check_site_health(site)
@@ -93,11 +79,7 @@ async def list_sites(
     
     # Run health checks concurrently and add health_status to each site
     for site, task in health_tasks:
-        logger.info(f"Waiting for health check result for {site.name}...")
         site.health_status = await task
-        logger.info(f"Health status for {site.name}: {site.health_status}")
-    
-    logger.info(f"All health checks completed!")
     
     return sites
 
@@ -130,12 +112,7 @@ async def create_site(
     await redis_publisher.publish_config_update(site.port, redis_client)
     
     # Restart WAF container to reload configuration
-    logger.info(f"🔄 New site '{new_site.name}' added, restarting WAF container...")
-    restart_success = await restart_waf_container()
-    if restart_success:
-        logger.info(f"✅ WAF restarted successfully after adding site '{new_site.name}'")
-    else:
-        logger.warning(f"⚠️ WAF restart failed after adding site '{new_site.name}'")
+    await restart_waf_container()
     
     return new_site
 
@@ -180,12 +157,7 @@ async def update_site(
         await redis_publisher.publish_config_update(site_update.port, redis_client)
 
     # Restart WAF container to reload configuration
-    logger.info(f"🔄 Site '{db_site.name}' updated, restarting WAF container...")
-    restart_success = await restart_waf_container()
-    if restart_success:
-        logger.info(f"✅ WAF restarted successfully after updating site '{db_site.name}'")
-    else:
-        logger.warning(f"⚠️ WAF restart failed after updating site '{db_site.name}'")
+    await restart_waf_container()
 
     return db_site
 
@@ -209,9 +181,4 @@ async def delete_site(
     await redis_publisher.publish_config_update(port_to_update, redis_client)
     
     # Restart WAF container to reload configuration
-    logger.info(f"🔄 Site '{site_name}' deleted, restarting WAF container...")
-    restart_success = await restart_waf_container()
-    if restart_success:
-        logger.info(f"✅ WAF restarted successfully after deleting site '{site_name}'")
-    else:
-        logger.warning(f"⚠️ WAF restart failed after deleting site '{site_name}'")
+    await restart_waf_container()

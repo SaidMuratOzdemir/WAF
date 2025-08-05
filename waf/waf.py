@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from models import Site
 from database import init_database, fetch_sites_from_db
 from waf_logic import is_malicious_request, create_block_response
-from waf_request_logger import log_request_activity
+
 from vt_cache import VirusTotalCache
 from analysis import fetch_patterns_from_db
 
@@ -66,10 +66,7 @@ class WAFManager:
                     runner = self.runners.get(port)
                     if runner:
                         runner._app["hosts_config"] = hosts
-                        logger.info(f"Updated hosts config for port {port}: {list(hosts)}")
-            self.sites = new
-            total = sum(len(h) for h in self.sites.values())
-            logger.info(f"Loaded {total} sites on {len(self.sites)} ports")
+                                self.sites = new
 
     async def start_listener(self, port: int, hosts: dict):
         app = web.Application()
@@ -83,13 +80,11 @@ class WAFManager:
         site = web.TCPSite(runner, "0.0.0.0", port)
         await site.start()
         self.runners[port] = runner
-        logger.info(f"Listening on {port} for hosts {list(hosts)}")
 
     async def stop_listener(self, port: int):
         runner = self.runners.pop(port, None)
         if runner:
             await runner.cleanup()
-            logger.info(f"Stopped listener on {port}")
 
     async def handle_request(self, request: web.Request) -> web.Response:
         client_ip = request.remote or "unknown"
@@ -108,17 +103,13 @@ class WAFManager:
                     break
 
         if not site:
-            await log_request_activity(request, body, "BLOCKED", "NO_SITE_CONFIG")
             return web.Response(text="No site configuration found for this host.", status=404)
 
         try:
             is_mal, reason = await is_malicious_request(request, site, body)
 
             if is_mal:
-                await log_request_activity(request, body, "BLOCKED", reason)
                 return create_block_response(reason, client_ip)
-
-            await log_request_activity(request, body, "ALLOWED")
 
             if (request.headers.get("connection", "").lower() == "upgrade" and
                     request.headers.get("upgrade", "").lower() == "websocket"):
@@ -128,7 +119,6 @@ class WAFManager:
 
         except Exception:
             logger.exception("Critical error during request handling")
-            await log_request_activity(request, body, "BLOCKED", "HANDLER_EXCEPTION")
             return web.Response(text="Internal WAF Error", status=500,
                                 headers={"X-WAF-Error": "handler_exception"})
 
@@ -180,7 +170,6 @@ class WAFManager:
                 await response.write_eof()
                 return response
             except ConnectionResetError:
-                logger.warning(f"Connection reset during proxy for {site.name}")
                 # Try to close response gracefully
                 try:
                     await response.write_eof()
@@ -188,7 +177,6 @@ class WAFManager:
                     pass
                 return response
             except Exception as e:
-                logger.error(f"Error during proxy for {site.name}: {e}")
                 # Try to close response gracefully
                 try:
                     await response.write_eof()
@@ -226,16 +214,10 @@ class WAFManager:
     async def handle_restart(self, request: web.Request) -> web.Response:
         """Handle restart request from API."""
         try:
-            logger.info("🔄 Restart request received from API")
-            logger.info(f"🔄 Request from: {request.remote}")
-            logger.info(f"🔄 Request headers: {dict(request.headers)}")
             # Send restart signal to self
-            logger.info("🔄 Sending SIGTERM signal to self...")
             os.kill(os.getpid(), signal.SIGTERM)
-            logger.info("🔄 SIGTERM signal sent successfully")
             return web.Response(text="Restart initiated", status=200)
         except Exception as e:
-            logger.error(f"❌ Error handling restart request: {e}")
             return web.Response(text="Restart failed", status=500)
 
     async def start(self):

@@ -33,7 +33,7 @@ async def get_banned_ips(client: redis.Redis) -> List[BannedIP]:
                 )
 
     except Exception as e:
-        print(f"[ip_service.get_banned_ips] Redis hata: {e}")
+
         raise HTTPException(status_code=500, detail="Redis bağlantı hatası")
 
     return banned_ips
@@ -54,7 +54,7 @@ async def get_clean_ips(client: redis.Redis) -> List[CleanIP]:
             ip = key.split(":", 1)[1]
             clean_ips.append(CleanIP(ip=ip, added_at=val))
     except Exception as e:
-        print(f"[ip_service.get_clean_ips] Redis hata: {e}")
+
         raise HTTPException(status_code=500, detail="Redis bağlantı hatası")
     return clean_ips
 

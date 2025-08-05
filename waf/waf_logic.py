@@ -62,10 +62,6 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
         is_mal, attack_type = await analyze_request_part(content, site)
         if is_mal:
             reason = f"{attack_type}_IN_{location}"
-            logger.warning(
-                f"Malicious content detected. Reason: {reason}, IP: {client_ip}. "
-                f"Content (truncated): {content[:200]}"
-            )
             if redis_client:
                 # This is the call that triggers the ban and the detailed log entry.
                 await ban_and_log(redis_client, client_ip, reason, request, body_bytes)

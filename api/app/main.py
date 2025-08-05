@@ -20,17 +20,12 @@ async def lifespan(app: FastAPI):
         settings.REDIS_URL, max_connections=10, decode_responses=True
     )
 
-    print("--- WAF API started ---")
-    print("Redis connection pool created.")
-
     # The application is now ready to run
     yield
 
     # On shutdown: Disconnect the Redis connection pool
     if dependencies.redis_pool:
         await dependencies.redis_pool.disconnect()
-        print("Redis connection pool disconnected.")
-    print("--- WAF API shut down ---")
 
 
 app = FastAPI(

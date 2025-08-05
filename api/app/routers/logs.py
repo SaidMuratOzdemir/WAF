@@ -23,34 +23,39 @@ def get_mongodb_client():
         raise HTTPException(status_code=500, detail=f"MongoDB connection failed: {e}")
 
 def safe_isoformat(timestamp):
-    """Safely convert timestamp to ISO format"""
-    print(f"DEBUG: timestamp type: {type(timestamp)}, value: {timestamp}")
+    """Safely convert timestamp to ISO format with +3 hours timezone adjustment"""
     if isinstance(timestamp, datetime):
-        return timestamp.isoformat()
+        # Add 3 hours to datetime object (convert UTC to Turkey time)
+        adjusted_timestamp = timestamp + timedelta(hours=3)
+        return adjusted_timestamp.isoformat()
     elif isinstance(timestamp, (int, float)):
         # Convert Unix timestamp to datetime
         try:
             # Handle edge cases like NaN, infinity, or very large numbers
             if isinstance(timestamp, float):
                 if timestamp != timestamp:  # NaN check
-                    return "1970-01-01T00:00:00"
+                    return "1970-01-01T03:00:00"
                 if timestamp == float('inf') or timestamp == float('-inf'):
-                    return "1970-01-01T00:00:00"
+                    return "1970-01-01T03:00:00"
                 if timestamp > 1e12:  # Likely milliseconds, convert to seconds
                     timestamp = timestamp / 1000
                 elif timestamp < 0:  # Invalid negative timestamp
-                    return "1970-01-01T00:00:00"
+                    return "1970-01-01T03:00:00"
             
-            return datetime.fromtimestamp(timestamp).isoformat()
+            # Convert to datetime and add 3 hours (convert UTC to Turkey time)
+            dt = datetime.fromtimestamp(timestamp)
+            adjusted_dt = dt + timedelta(hours=3)
+            return adjusted_dt.isoformat()
         except (ValueError, OSError, OverflowError):
             # Fallback for invalid timestamps
-            return "1970-01-01T00:00:00"
+            return "1970-01-01T03:00:00"
     else:
         return str(timestamp)
 
 @router.get("/requests")
 async def get_recent_requests(
-    limit: int = Query(default=100, le=1000),
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=50, le=1000),
     site_name: Optional[str] = None,
     client_ip: Optional[str] = None,
     method: Optional[str] = None,
@@ -72,23 +77,43 @@ async def get_recent_requests(
         if blocked_only:
             filter_query["is_blocked"] = True
             
-        # Get requests
-        requests = list(db.requests.find(filter_query).sort("timestamp", -1).limit(limit))
+        # Calculate skip for pagination
+        skip = (page - 1) * limit
         
-        # Convert ObjectId to string for JSON serialization
+        # Get total count
+        total_count = db.requests.count_documents(filter_query)
+        
+        # Get requests with pagination
+        requests = list(db.requests.find(filter_query).sort("timestamp", -1).skip(skip).limit(limit))
+        
+        # Convert to new format for frontend
+        logs = []
         for req in requests:
-            req["_id"] = str(req["_id"])
-            req["timestamp"] = safe_isoformat(req["timestamp"])
+            # Get corresponding response for status code
+            response = db.responses.find_one({"request_id": req["request_id"]})
+            status_code = response["status_code"] if response else 0
+            
+            log_entry = {
+                "id": req["request_id"],
+                "ip": req["client_ip"],
+                "method": req["method"],
+                "status": status_code,
+                "url": req["path"],
+                "host": req.get("host", ""),
+                "timestamp": safe_isoformat(req["timestamp"]),
+                "request": f"{req['method']} {req['path']} HTTP/1.1\nHost: {req.get('host', '')}\n{chr(10).join([f'{k}: {v}' for k, v in req.get('headers', {}).items()])}",
+                "response": f"HTTP/1.1 {status_code} OK\n{chr(10).join([f'{k}: {v}' for k, v in response.get('headers', {}).items()])}" if response else "",
+                "site_name": req.get("site_name", ""),
+                "is_blocked": req.get("is_blocked", False),
+                "block_reason": req.get("block_reason", "")
+            }
+            logs.append(log_entry)
             
         return {
-            "requests": requests,
-            "total": len(requests),
-            "filters": {
-                "site_name": site_name,
-                "client_ip": client_ip,
-                "method": method,
-                "blocked_only": blocked_only
-            }
+            "logs": logs,
+            "total": total_count,
+            "page": page,
+            "hasMore": skip + limit < total_count
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get requests: {e}")
@@ -131,8 +156,8 @@ async def get_log_statistics(
 ):
     """Get logging statistics - ADMIN ONLY"""
     try:
-        # Calculate time range
-        end_time = datetime.utcnow()
+        # Calculate time range with +3 hours adjustment
+        end_time = datetime.utcnow() + timedelta(hours=3)
         start_time = end_time - timedelta(hours=hours)
         
         # Pipeline for aggregation

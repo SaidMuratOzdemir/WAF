@@ -29,6 +29,31 @@ services:
     networks: [ waf-core-net ]
     restart: unless-stopped
 
+  mongodb:
+    image: mongo
+    environment:
+      - MONGO_INITDB_DATABASE=waf_logs
+    command:
+      - mongod
+      - --quiet
+      - --logpath
+      - /dev/null
+      - --logappend
+      - --setParameter
+      - quiet=1
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - waf-core-net
+    restart: unless-stopped
+
   api:
     build:
       context: ./api
@@ -38,41 +63,53 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
       - REDIS_URL=redis://redis:6379
+      - MONGODB_URL=mongodb://mongodb:27017/waf_logs
       - JWT_SECRET=${JWT_SECRET}
       - PORT=8001
-    depends_on: [ postgres, redis ]
-    networks: [ waf-core-net ]
+    depends_on:
+      - postgres
+      - redis
+      - mongodb
+    networks:
+      - waf-core-net
     restart: unless-stopped
 
   waf:
     build:
       context: .
       dockerfile: ./waf/Dockerfile
-    # Sadece WAF host'a açılır:
-    ports: [ "80:80" ]
+    ports:
+      - "80:80"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres/waf
+      - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
       - REDIS_URL=redis://redis:6379
+      - MONGODB_URL=mongodb://mongodb:27017/waf_logs
       - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
       - DEBUG=true
       - POLL_INTERVAL=5
-    depends_on: [ postgres, redis, api ]
-    # WAF tüm app ağlarında da olacak:
-    networks: [ waf-core-net, dvwa-net, juiceshop-net, hr-system-net ]
+    depends_on:
+      - postgres
+      - redis
+      - mongodb
+      - api
+    networks:
+      - waf-core-net
+      - dvwa-net
+      - juiceshop-net
+      - hr-system-net
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  mongodb_data:
 
 networks:
-  # Core (DB/Redis/API <-> WAF)
   waf-core-net:
     external: true
     ipam:
       config:
         - subnet: 10.99.0.0/24
 
-  # Uygulama ağları — WAF bunu OLUŞTURUR (external değil)
   dvwa-net:
     external: true
     ipam:

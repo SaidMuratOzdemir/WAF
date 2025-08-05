@@ -13,3 +13,4 @@ python-dotenv==1.0.0
 alembic==1.12.1
 pydantic-settings
 aiohttp==3.9.1
+pymongo==4.13.2

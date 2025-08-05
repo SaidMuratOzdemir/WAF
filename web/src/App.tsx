@@ -1,5 +1,7 @@
 import { useRef, useCallback, lazy, Suspense } from 'react';
 const IPManagement = lazy(() => import('./components/IPManagement'));
+const RequestLogs = lazy(() => import('./components/RequestLogs'));
+const WAFLogViewer = lazy(() => import('./components/WAFLogViewer'));
 import { Container, AppBar, Toolbar, Typography, Box, Button } from '@mui/material';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { SiteList, SiteListRef } from './components/SiteList';
@@ -38,6 +40,12 @@ function Dashboard() {
           <Typography variant="h6" component="h1" sx={{ flexGrow: 1 }}>
             WAF Management Console
           </Typography>
+          <Button color="inherit" href="/logs" sx={{ mr: 2 }}>
+            Logs
+          </Button>
+          <Button color="inherit" href="/logs-new" sx={{ mr: 2 }}>
+            Logs (New)
+          </Button>
           <Button color="inherit" onClick={logout}>
             Logout
           </Button>
@@ -87,6 +95,26 @@ function App() {
               <ProtectedRoute>
                 <Suspense fallback={<div>Yükleniyor...</div>}>
                   <PatternManagement />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/logs"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<div>Yükleniyor...</div>}>
+                  <RequestLogs />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/logs-new"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<div>Yükleniyor...</div>}>
+                  <WAFLogViewer />
                 </Suspense>
               </ProtectedRoute>
             }

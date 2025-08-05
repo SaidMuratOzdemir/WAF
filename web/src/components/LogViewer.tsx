@@ -1,4 +1,4 @@
-// src/WAFLogViewer.tsx
+// src/LogViewer.tsx
 
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -15,7 +15,7 @@ const queryClient = new QueryClient({
   },
 });
 
-export default function WAFLogViewer() {
+export default function LogViewer() {
   const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
   return (
     <QueryClientProvider client={queryClient}>

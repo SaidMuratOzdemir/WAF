@@ -1,7 +1,7 @@
 // src/components/SidebarLogList.tsx
 
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { getLogs, LogEntry } from '@/api/logs-new';
+import { getLogs, LogEntry } from '@/api/logs';
 import { useRef, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';

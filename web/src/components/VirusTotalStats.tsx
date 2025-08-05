@@ -141,27 +141,6 @@ const VirusTotalStats = () => {
                             <SecurityIcon />
                             <Typography variant="h6">VirusTotal Cache İstatistikleri</Typography>
                         </Box>
-                        <Box display="flex" gap={1}>
-                            <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={fetchStats}
-                                disabled={loading}
-                                startIcon={<RefreshIcon />}
-                            >
-                                Yenile
-                            </Button>
-                            <Button
-                                variant="outlined"
-                                size="small"
-                                onClick={handleCleanup}
-                                disabled={cleanupLoading}
-                                startIcon={<CleanupIcon />}
-                                color="warning"
-                            >
-                                Cache Temizle
-                            </Button>
-                        </Box>
                     </Box>
 
                     <Typography variant="body2" color="text.secondary" mb={2}>
@@ -240,6 +219,15 @@ const VirusTotalStats = () => {
                         >
                             IP Yönetimi
                         </Button>
+                        <Button
+                            variant="contained"
+                            color="primary"
+                            startIcon={<SecurityIcon />}
+                            onClick={() => navigate('/logs')}
+                        >
+                            Loglar
+                        </Button>
+
                         <Button
                             variant="outlined"
                             color="secondary"

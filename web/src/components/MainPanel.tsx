@@ -1,10 +1,10 @@
 // src/components/MainPanel.tsx
 
 import { useQuery } from '@tanstack/react-query';
-import { getLogDetails } from '@/api/logs-new';
+import { getLogDetails } from '@/api/logs';
 import { HeaderInfo } from './HeaderInfo';
 import { LogDetailPanel } from './LogDetailPanel';
-import { LogEntry } from '@/api/logs-new';
+import { LogEntry } from '@/api/logs';
 
 interface MainPanelProps {
   selectedLog: LogEntry | null;

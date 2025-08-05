@@ -1,7 +1,7 @@
 // src/components/HeaderInfo.tsx
 
 import { Card, CardContent } from '@/components/ui/card';
-import { LogEntry } from '@/api/logs-new';
+import { LogEntry } from '@/api/logs';
 
 export function getStatusColor(status: number) {
   if (status >= 200 && status < 300) return 'text-green-600';

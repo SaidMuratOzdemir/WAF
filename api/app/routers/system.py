@@ -23,6 +23,7 @@ async def get_vt_cache_stats(
 ):
     """Get statistics about the VirusTotal IP cache in Redis."""
     stats = {
+        "date": datetime.now().strftime("%Y-%m-%d"),
         "total_entries": 0, "malicious_count": 0, "clean_count": 0, "error_count": 0
     }
     try:

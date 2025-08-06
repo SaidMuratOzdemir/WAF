@@ -22,20 +22,21 @@ _pattern_lock = asyncio.Lock()
 
 
 async def fetch_patterns_from_db():
-    # This function is well-written and correct. No changes needed.
+    """
+    Loads malicious patterns from the database and caches them as lowercase substrings
+    for direct containment checks (not regex).
+    """
     global PATTERN_CACHE, PATTERN_CACHE_LAST
     async with async_session() as session:
         result = await session.execute(select(MaliciousPattern))
         patterns = result.scalars().all()
 
     cache = {"xss": [], "sql": [], "custom": []}  # Standardize on 'sql' as the type
+
     for p in patterns:
-        try:
-            compiled = re.compile(p.pattern, re.IGNORECASE | re.DOTALL)
-            cache.setdefault(p.type.lower(), []).append(compiled)
-        except re.error as e:
-            # dont log anything here, this is a sync task
-            pass
+        pattern_type = p.type.lower()
+        pattern_str = p.pattern.strip().lower()
+        cache.setdefault(pattern_type, []).append(pattern_str)
 
     PATTERN_CACHE = cache
     PATTERN_CACHE_LAST = asyncio.get_event_loop().time()
@@ -58,18 +59,19 @@ async def get_patterns():
 
 
 async def _is_malicious(content: str, types_to_check: list):
-    # Correct.
     if not content or not types_to_check:
         return False, ""
 
     patterns = await get_patterns()
+    content_lc = content.lower()
 
     for attack_type in types_to_check:
-        if attack_type in patterns:
-            for rx in patterns[attack_type]:
-                if rx.search(content):
-                    return True, attack_type.upper()
+        for pattern in patterns.get(attack_type, []):
+            if pattern in content_lc:
+                return True, attack_type.upper()
+
     return False, ""
+
 
 
 async def analyze_request_part(content: str, site: Site):

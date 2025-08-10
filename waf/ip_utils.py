@@ -8,6 +8,7 @@ from datetime import datetime
 # We will use a simple, dedicated key for temporary bans.
 # This is more efficient than storing the ban status inside a complex JSON object.
 BAN_KEY_PREFIX = "banned_ip:"
+CLEAN_KEY_PREFIX = "clean_ip:"
 
 async def ban_ip_for_duration(redis_client, ip: str, duration: int) -> None:
     """
@@ -31,6 +32,12 @@ async def unban_ip(redis_client, ip: str) -> None:
     """
     ban_key = f"{BAN_KEY_PREFIX}{ip}"
     await redis_client.delete(ban_key)
+
+
+async def is_whitelisted_ip(redis_client, ip: str) -> bool:
+    """Checks if an IP is explicitly whitelisted (clean_ip:* key exists)."""
+    clean_key = f"{CLEAN_KEY_PREFIX}{ip}"
+    return await redis_client.exists(clean_key)
 
 
 # --- IP Info and Geolocation/VT Cache Logic ---

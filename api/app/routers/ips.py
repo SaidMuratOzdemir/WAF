@@ -46,3 +46,25 @@ async def unban_ip_address(
     """Unban an IP address."""
     success = await ip_service.unban_ip(ip_address, redis_client)
     return {"status": "success", "unbanned": success}
+
+
+@router.post("/clean/{ip_address}", response_model=dict)
+async def whitelist_ip_address(
+    ip_address: str,
+    redis_client: redis.Redis = Depends(get_redis_connection),
+    current_user: UserInDB = Depends(get_current_admin_user)
+):
+    """Whitelist an IP address."""
+    success = await ip_service.whitelist_ip(ip_address, redis_client)
+    return {"status": "success", "whitelisted": success}
+
+
+@router.delete("/clean/{ip_address}", response_model=dict)
+async def unwhitelist_ip_address(
+    ip_address: str,
+    redis_client: redis.Redis = Depends(get_redis_connection),
+    current_user: UserInDB = Depends(get_current_admin_user)
+):
+    """Remove an IP from whitelist."""
+    success = await ip_service.unwhitelist_ip(ip_address, redis_client)
+    return {"status": "success", "unwhitelisted": success}

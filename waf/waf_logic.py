@@ -7,7 +7,7 @@ from aiohttp import web
 from models import Site
 from vt_cache import CachedVirusTotalClient
 from analysis import analyze_request_part
-from ip_utils import is_banned_ip, is_local_ip
+from ip_utils import is_banned_ip, is_local_ip, is_whitelisted_ip
 from ban import ban_and_log
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,10 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
     """
     client_ip = request.remote or "unknown"
     redis_client = request.app['waf_manager'].redis_client
+
+    # Whitelist precedence: if whitelisted, skip all checks and allow
+    if redis_client and await is_whitelisted_ip(redis_client, client_ip):
+        return False, ""
 
     if redis_client and await is_banned_ip(redis_client, client_ip):
         return True, "BANNED_IP"

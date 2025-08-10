@@ -142,7 +142,7 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                     <TextField
                         required
                         fullWidth
-                        label="Frontend URL"
+                        label="Frontend URL or IP"
                         name="frontend_url"
                         value={formData.frontend_url}
                         onChange={handleChange}
@@ -152,7 +152,7 @@ export function SiteForm({ onSiteAdded }: SiteFormProps) {
                     <TextField
                         required
                         fullWidth
-                        label="Backend URL"
+                        label="Backend URL or IP"
                         name="backend_url"
                         value={formData.backend_url}
                         onChange={handleChange}

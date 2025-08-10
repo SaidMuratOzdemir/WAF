@@ -16,7 +16,7 @@ export async function apiFetch<T = any>(path: string, options: RequestInit = {})
   if (response.status === 401 || response.status === 403) {
     localStorage.removeItem('token');
     window.location.href = '/login';
-    throw new Error('Oturum süresi doldu, tekrar giriş yapın.');
+    throw new Error('Session expired, please log in again.');
   }
   if (!response.ok) {
     let error: any = {};

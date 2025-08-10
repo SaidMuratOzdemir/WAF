@@ -62,7 +62,7 @@ function App() {
             path="/ip-management"
             element={
               <ProtectedRoute>
-                <Suspense fallback={<div>Yükleniyor...</div>}>
+                <Suspense fallback={<div>Loading...</div>}>
                   <IPManagement />
                 </Suspense>
               </ProtectedRoute>
@@ -72,7 +72,7 @@ function App() {
             path="/patterns"
             element={
               <ProtectedRoute>
-                <Suspense fallback={<div>Yükleniyor...</div>}>
+                <Suspense fallback={<div>Loading...</div>}>
                   <PatternManagement />
                 </Suspense>
               </ProtectedRoute>
@@ -82,7 +82,7 @@ function App() {
             path="/logs"
             element={
               <ProtectedRoute>
-                <Suspense fallback={<div>Yükleniyor...</div>}>
+                <Suspense fallback={<div>Loading...</div>}>
                   <LogViewer />
                 </Suspense>
               </ProtectedRoute>

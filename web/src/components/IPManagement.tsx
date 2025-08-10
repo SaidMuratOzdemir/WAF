@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo } from 'react';
 import {
   Box,
   Container,
-  Grid,
   Paper,
   Typography,
   Button,
@@ -16,7 +15,7 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material';
-import { getBannedIPs, getCleanIPs, banIP, unbanIP, IPInfo } from '../api/ips';
+import { getBannedIPs, getCleanIPs, banIP, unbanIP, addCleanIP, removeCleanIP, IPInfo } from '../api/ips';
 
 const ipRegex = /^(25[0-5]|2[0-4]\d|[01]?\d\d?)(\.(25[0-5]|2[0-4]\d|[01]?\d\d?)){3}$/;
 
@@ -39,7 +38,7 @@ const IPManagement: React.FC = () => {
       setBannedIPs(bans);
       setCleanIPs(cleans);
     } catch (err: any) {
-      setSnackbar({ open: true, message: err.message || 'Yükleme hatası', severity: 'error' });
+      setSnackbar({ open: true, message: err.message || 'Load error', severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -60,17 +59,17 @@ const IPManagement: React.FC = () => {
 
   const handleBan = async (ip: string) => {
     if (!ipRegex.test(ip)) {
-      setSnackbar({ open: true, message: 'Geçersiz IP adresi.', severity: 'error' });
+      setSnackbar({ open: true, message: 'Invalid IP address.', severity: 'error' });
       return;
     }
     setLoading(true);
     try {
       await banIP(ip);
-      setSnackbar({ open: true, message: `${ip} başarıyla yasaklandı.`, severity: 'success' });
+      setSnackbar({ open: true, message: `${ip} successfully banned.`, severity: 'success' });
       fetchIPs();
       setNewIP('');
     } catch (err: any) {
-      setSnackbar({ open: true, message: err.message || 'Banlama hatası', severity: 'error' });
+      setSnackbar({ open: true, message: err.message || 'Ban error', severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -80,10 +79,41 @@ const IPManagement: React.FC = () => {
     setLoading(true);
     try {
       await unbanIP(ip);
-      setSnackbar({ open: true, message: `${ip} yasağı kaldırıldı.`, severity: 'success' });
+      setSnackbar({ open: true, message: `${ip} unbanned.`, severity: 'success' });
       fetchIPs();
     } catch (err: any) {
-      setSnackbar({ open: true, message: err.message || 'Unban hatası', severity: 'error' });
+      setSnackbar({ open: true, message: err.message || 'Unban error', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWhitelistAdd = async (ip: string) => {
+    if (!ipRegex.test(ip)) {
+      setSnackbar({ open: true, message: 'Invalid IP address.', severity: 'error' });
+      return;
+    }
+    setLoading(true);
+    try {
+      await addCleanIP(ip);
+      setSnackbar({ open: true, message: `${ip} added to whitelist.`, severity: 'success' });
+      fetchIPs();
+      setNewIP('');
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err.message || 'Whitelist error', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWhitelistRemove = async (ip: string) => {
+    setLoading(true);
+    try {
+      await removeCleanIP(ip);
+      setSnackbar({ open: true, message: `${ip} removed from whitelist.`, severity: 'success' });
+      fetchIPs();
+    } catch (err: any) {
+      setSnackbar({ open: true, message: err.message || 'Remove whitelist error', severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -92,42 +122,57 @@ const IPManagement: React.FC = () => {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Typography variant="h3" gutterBottom>
-        IP Yönetimi
+        IP Management
       </Typography>
 
-      <Grid container spacing={2} alignItems="center" sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={8} md={5}>
+      <Box
+        display="flex"
+        flexWrap="wrap"
+        alignItems="center"
+        gap={2}
+        sx={{ mb: 3 }}
+      >
+        <Box flex={1} minWidth={280}>
           <TextField
             fullWidth
-            label="Yeni IP ekle"
-            placeholder="Ör: 192.168.0.1"
+            label="Add new IP"
+            placeholder="e.g. 192.168.0.1"
             value={newIP}
             onChange={(e) => setNewIP(e.target.value)}
             size="medium"
           />
-        </Grid>
-        <Grid item xs={12} sm={4} md={2}>
+        </Box>
+        <Box>
           <Button
-            fullWidth
             variant="contained"
             onClick={() => handleBan(newIP)}
             disabled={loading}
             size="large"
           >
-            Banla
+            Ban
           </Button>
-        </Grid>
-        <Grid item xs={12} sm={12} md={5}>
+        </Box>
+        <Box>
+          <Button
+            variant="outlined"
+            onClick={() => handleWhitelistAdd(newIP)}
+            disabled={loading}
+            size="large"
+          >
+            Whitelist
+          </Button>
+        </Box>
+        <Box flex={1} minWidth={280}>
           <TextField
             fullWidth
-            label="Ara IP"
-            placeholder="Filtrelemek için IP girin"
+            label="Search IP"
+            placeholder="Enter IP to filter"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             size="medium"
           />
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
       {loading && (
         <Box display="flex" justifyContent="center" my={6}>
@@ -135,21 +180,24 @@ const IPManagement: React.FC = () => {
         </Box>
       )}
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper elevation={4} sx={{ p: 4 }}>
+      <Box
+        display="grid"
+        gridTemplateColumns={{ xs: '1fr', md: '1fr 1fr' }}
+        gap={3}
+      >
+        <Paper elevation={4} sx={{ p: 4 }}>
             <Typography variant="h5" gutterBottom>
-              Yasaklı IP'ler ({filteredBans.length})
+              Banned IPs ({filteredBans.length})
             </Typography>
             {!loading && filteredBans.length === 0 ? (
-              <Typography sx={{ fontSize: '1.1rem' }}>Eşleşen yasaklı IP yok.</Typography>
+              <Typography sx={{ fontSize: '1.1rem' }}>No matching banned IPs.</Typography>
             ) : (
               <Table size="medium">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold' }}>IP Adresi</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>IP Address</TableCell>
                     <TableCell sx={{ fontWeight: 'bold' }}>Banned At</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>İşlem</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>Action</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -157,7 +205,7 @@ const IPManagement: React.FC = () => {
                     <TableRow key={ip.ip} hover>
                       <TableCell>{ip.ip}</TableCell>
                       <TableCell>
-                        {ip.banned_at ? new Date(ip.banned_at).toLocaleString('tr-TR', { hour12: false }) : '-'}
+                        {ip.banned_at ? new Date(ip.banned_at).toLocaleString('en-US', { hour12: false }) : '-'}
                       </TableCell>
                       <TableCell align="right">
                         <Button
@@ -165,7 +213,7 @@ const IPManagement: React.FC = () => {
                           onClick={() => handleUnban(ip.ip)}
                           disabled={loading}
                         >
-                          Kaldır
+                          Unban
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -174,21 +222,20 @@ const IPManagement: React.FC = () => {
               </Table>
             )}
           </Paper>
-        </Grid>
 
-        <Grid item xs={12} md={6}>
-          <Paper elevation={4} sx={{ p: 4 }}>
+        <Paper elevation={4} sx={{ p: 4 }}>
             <Typography variant="h5" gutterBottom>
-              Whitelist IP'ler ({filteredCleans.length})
+              Whitelist IPs ({filteredCleans.length})
             </Typography>
             {!loading && filteredCleans.length === 0 ? (
-              <Typography sx={{ fontSize: '1.1rem' }}>Eşleşen whitelist IP yok.</Typography>
+              <Typography sx={{ fontSize: '1.1rem' }}>No matching whitelist IPs.</Typography>
             ) : (
               <Table size="medium">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ fontWeight: 'bold' }}>IP Adresi</TableCell>
+                    <TableCell sx={{ fontWeight: 'bold' }}>IP Address</TableCell>
                     <TableCell sx={{ fontWeight: 'bold' }}>Added At</TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 'bold' }}>Action</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -196,7 +243,17 @@ const IPManagement: React.FC = () => {
                     <TableRow key={ip.ip} hover>
                       <TableCell>{ip.ip}</TableCell>
                       <TableCell>
-                        {ip.added_at ? new Date(ip.added_at).toLocaleString('tr-TR', { hour12: false }) : '-'}
+                        {ip.added_at ? new Date(ip.added_at).toLocaleString('en-US', { hour12: false }) : '-'}
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          onClick={() => handleWhitelistRemove(ip.ip)}
+                          disabled={loading}
+                        >
+                          Remove
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -204,8 +261,7 @@ const IPManagement: React.FC = () => {
               </Table>
             )}
           </Paper>
-        </Grid>
-      </Grid>
+      </Box>
 
       <Snackbar
         open={snackbar.open}

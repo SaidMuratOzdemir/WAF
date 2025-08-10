@@ -94,7 +94,7 @@ const EditSiteModal = ({ open, site, onClose, onSuccess }: EditSiteModalProps) =
     return (
         <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
             <DialogTitle>
-                Site Düzenle: {site?.name}
+                Edit Site: {site?.name}
             </DialogTitle>
             <DialogContent>
                 {error && (
@@ -105,7 +105,7 @@ const EditSiteModal = ({ open, site, onClose, onSuccess }: EditSiteModalProps) =
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
                     <TextField
-                        label="Site Adı"
+                        label="Site Name"
                         value={formData.name}
                         onChange={handleInputChange('name')}
                         fullWidth
@@ -135,7 +135,7 @@ const EditSiteModal = ({ open, site, onClose, onSuccess }: EditSiteModalProps) =
                     </Box>
 
                     <TextField
-                        label="Frontend URL"
+                        label="Frontend URL or IP"
                         value={formData.frontend_url}
                         onChange={handleInputChange('frontend_url')}
                         fullWidth
@@ -145,7 +145,7 @@ const EditSiteModal = ({ open, site, onClose, onSuccess }: EditSiteModalProps) =
                     />
 
                     <TextField
-                        label="Backend URL"
+                        label="Backend URL or IP"
                         value={formData.backend_url}
                         onChange={handleInputChange('backend_url')}
                         fullWidth
@@ -163,7 +163,7 @@ const EditSiteModal = ({ open, site, onClose, onSuccess }: EditSiteModalProps) =
                                     disabled={loading}
                                 />
                             }
-                            label="XSS Koruması"
+                            label="XSS Protection"
                         />
                         <FormControlLabel
                             control={
@@ -173,7 +173,7 @@ const EditSiteModal = ({ open, site, onClose, onSuccess }: EditSiteModalProps) =
                                     disabled={loading}
                                 />
                             }
-                            label="SQL Injection Koruması"
+                            label="SQL Injection Protection"
                         />
                         <FormControlLabel
                             control={
@@ -183,14 +183,14 @@ const EditSiteModal = ({ open, site, onClose, onSuccess }: EditSiteModalProps) =
                                     disabled={loading}
                                 />
                             }
-                            label="VirusTotal IP Kontrolü"
+                            label="VirusTotal IP Check"
                         />
                     </Box>
                 </Box>
             </DialogContent>
             <DialogActions>
                 <Button onClick={handleClose} disabled={loading}>
-                    İptal
+                    Cancel
                 </Button>
                 <Button 
                     onClick={handleSubmit} 
@@ -198,7 +198,7 @@ const EditSiteModal = ({ open, site, onClose, onSuccess }: EditSiteModalProps) =
                     disabled={loading}
                     startIcon={loading ? <CircularProgress size={16} /> : undefined}
                 >
-                    {loading ? 'Güncelleniyor...' : 'Güncelle'}
+                    {loading ? 'Updating...' : 'Update'}
                 </Button>
             </DialogActions>
         </Dialog>

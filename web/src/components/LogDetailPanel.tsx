@@ -44,8 +44,8 @@ export function LogDetailPanel({ logDetails, isLoading }: LogDetailPanelProps) {
     );
   }
 
-  const fmtHeaders = (hdr: Record<string,string>) =>
-    Object.entries(hdr).map(([k,v])=>`${k}: ${v}`).join('\n');
+  const fmtHeaders = (hdr: Record<string, string>) =>
+    Object.entries(hdr).map(([k, v]) => `${k}: ${v}`).join('\n');
 
   const req = logDetails.request;
   const resp = logDetails.response;
@@ -54,41 +54,37 @@ export function LogDetailPanel({ logDetails, isLoading }: LogDetailPanelProps) {
     <Card className="shadow-sm hover:shadow-md transition-shadow">
       <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4">
         <CardTitle className="text-lg">Log Details</CardTitle>
-          <ToggleGroup
-            type="single"
-            value={tab}
-            onValueChange={v => v && setTab(v as any)}
-            className="space-x-2"
+        <ToggleGroup
+          type="single"
+          value={tab}
+          onValueChange={(v) => v && setTab(v as any)}
+          className="inline-flex overflow-hidden rounded-md border bg-card text-sm divide-x divide-border"
+        >
+          <ToggleGroupItem
+            value="request"
+            className="
+              px-3 py-1.5 focus:outline-none transition-colors
+              data-[state=on]:text-foreground
+              data-[state=on]:bg-gray-200
+              data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground
+              hover:bg-gray-100
+            "
           >
-            <ToggleGroupItem
-              value="request"
-              className="
-                px-3 py-1 rounded-md 
-                data-[state=on]:bg-primary 
-                data-[state=on]:text-primary-foreground
-                data-[state=off]:bg-muted/20 
-                data-[state=off]:text-muted-foreground
-                transition-colors
-                hover:bg-muted/40
-              "
-            >
-              📨 Request
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="response"
-              className="
-                px-3 py-1 rounded-md 
-                data-[state=on]:bg-primary 
-                data-[state=on]:text-primary-foreground
-                data-[state=off]:bg-muted/20 
-                data-[state=off]:text-muted-foreground
-                transition-colors
-                hover:bg-muted/40
-              "
-            >
-              📥 Response
-            </ToggleGroupItem>
-          </ToggleGroup>
+            📨 Request
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="response"
+            className="
+              px-3 py-1.5 focus:outline-none transition-colors
+              data-[state=on]:text-foreground
+              data-[state=on]:bg-gray-200
+              data-[state=off]:bg-transparent data-[state=off]:text-muted-foreground
+              hover:bg-gray-100
+            "
+          >
+            📥 Response
+          </ToggleGroupItem>
+        </ToggleGroup>
       </CardHeader>
 
       <CardContent className="space-y-4">

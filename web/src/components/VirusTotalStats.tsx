@@ -53,7 +53,7 @@ const VirusTotalStats = () => {
             const data = await apiFetch<CacheStats>('/system/vt-cache/stats');
             setStats(data);
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Bilinmeyen hata');
+            setError(err instanceof Error ? err.message : 'Unknown error');
         } finally {
             setLoading(false);
         }
@@ -63,11 +63,11 @@ const VirusTotalStats = () => {
         setCleanupLoading(true);
         try {
             const result = await apiFetch<CleanupResult>('/system/vt-cache/cleanup', { method: 'POST' });
-            setSnackbarMessage(`${result.cleaned_entries} cache girişi temizlendi`);
+            setSnackbarMessage(`${result.cleaned_entries} cache entries cleaned`);
             setSnackbarOpen(true);
             await fetchStats();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Cache temizleme hatası');
+            setError(err instanceof Error ? err.message : 'Cache cleanup error');
         } finally {
             setCleanupLoading(false);
         }
@@ -91,7 +91,7 @@ const VirusTotalStats = () => {
                 <CardContent>
                     <Box display="flex" alignItems="center" gap={1} mb={2}>
                         <SecurityIcon />
-                        <Typography variant="h6">VirusTotal Cache İstatistikleri</Typography>
+                        <Typography variant="h6">VirusTotal Cache Statistics</Typography>
                     </Box>
                     <Box display="flex" justifyContent="center" p={2}>
                         <CircularProgress />
@@ -107,12 +107,12 @@ const VirusTotalStats = () => {
                 <CardContent>
                     <Box display="flex" alignItems="center" gap={1} mb={2}>
                         <SecurityIcon />
-                        <Typography variant="h6">VirusTotal Cache İstatistikleri</Typography>
+                        <Typography variant="h6">VirusTotal Cache Statistics</Typography>
                     </Box>
                     <Alert severity="error">
                         <Typography>{error}</Typography>
                         <Button onClick={fetchStats} size="small" startIcon={<RefreshIcon />}>
-                            Tekrar Dene
+                            Retry
                         </Button>
                     </Alert>
                 </CardContent>
@@ -139,12 +139,12 @@ const VirusTotalStats = () => {
                     <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
                         <Box display="flex" alignItems="center" gap={1}>
                             <SecurityIcon />
-                            <Typography variant="h6">VirusTotal Cache İstatistikleri</Typography>
+                            <Typography variant="h6">VirusTotal Cache Statistics</Typography>
                         </Box>
                     </Box>
 
                     <Typography variant="body2" color="text.secondary" mb={2}>
-                        Tarih: {stats.date}
+                        Date: {stats.date}
                     </Typography>
 
                     <Box display="flex" flexWrap="wrap" gap={2}>
@@ -153,7 +153,7 @@ const VirusTotalStats = () => {
                                 {stats.total_entries}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                Toplam IP Girişi
+                                Total IP Entries
                             </Typography>
                         </Box>
 
@@ -162,11 +162,11 @@ const VirusTotalStats = () => {
                                 {stats.malicious_count}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                Kötü Amaçlı IP
+                                Malicious IP
                             </Typography>
                             <Chip 
                                 icon={<ErrorIcon />}
-                                label={`%${maliciousPercentage}`}
+                                label={`${maliciousPercentage}%`}
                                 color="error"
                                 size="small"
                                 sx={{ mt: 1 }}
@@ -178,11 +178,11 @@ const VirusTotalStats = () => {
                                 {stats.clean_count}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                Temiz IP
+                                Clean IP
                             </Typography>
                             <Chip 
                                 icon={<CheckIcon />}
-                                label={`%${cleanPercentage}`}
+                                label={`${cleanPercentage}%`}
                                 color="success"
                                 size="small"
                                 sx={{ mt: 1 }}
@@ -194,7 +194,7 @@ const VirusTotalStats = () => {
                                 {stats.error_count}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                Hatalı Giriş
+                                Error Entries
                             </Typography>
                         </Box>
                     </Box>
@@ -208,7 +208,7 @@ const VirusTotalStats = () => {
                             startIcon={<SecurityIcon />}
                             onClick={() => navigate('/patterns')}
                         >
-                            Kontrol Patternleri
+                            Validation Patterns
                         </Button>
 
                         <Button
@@ -217,7 +217,7 @@ const VirusTotalStats = () => {
                             startIcon={<ManageIcon />}
                             onClick={handleIPManagement}
                         >
-                            IP Yönetimi
+                            IP Management
                         </Button>
                         <Button
                             variant="contained"
@@ -225,7 +225,7 @@ const VirusTotalStats = () => {
                             startIcon={<SecurityIcon />}
                             onClick={() => navigate('/logs')}
                         >
-                            Loglar
+                            Logs
                         </Button>
 
                         <Button
@@ -234,15 +234,16 @@ const VirusTotalStats = () => {
                             startIcon={<RefreshIcon />}
                             onClick={fetchStats}
                         >
-                            Yenile
+                            Refresh
                         </Button>
                         <Button
                             variant="outlined"
                             color="error"
-                            startIcon={<CleanupIcon />}
+                            startIcon={cleanupLoading ? <CircularProgress size={16} /> : <CleanupIcon />}
                             onClick={handleCleanup}
+                            disabled={cleanupLoading}
                         >
-                            Cache Temizle
+                            {cleanupLoading ? 'Cleaning...' : 'Clean Cache'}
                         </Button>
                     </Box>
 
@@ -250,9 +251,7 @@ const VirusTotalStats = () => {
 
                     <Alert severity="info" icon={<SecurityIcon />}>
                         <Typography variant="body2">
-                            VirusTotal cache sistemi günlük olarak IP adreslerini kontrol eder ve 
-                            sonuçları saklar. Bu sayede aynı IP'den gelen isteklerde tekrar sorgu 
-                            yapılmaz ve sistem performansı artar.
+                            The VirusTotal cache system checks IP addresses daily and stores the results. This avoids repeat lookups for requests from the same IP and improves performance.
                         </Typography>
                     </Alert>
 

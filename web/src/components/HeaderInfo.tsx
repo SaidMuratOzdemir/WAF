@@ -28,7 +28,7 @@ interface HeaderInfoProps {
 
 export function HeaderInfo({ selectedLog }: HeaderInfoProps) {
   const fmtTime = (ts: string) =>
-    new Date(ts).toLocaleString('tr-TR', { hour12: false });
+    new Date(ts).toLocaleString('en-US', { hour12: false });
 
   if (!selectedLog) {
     return (

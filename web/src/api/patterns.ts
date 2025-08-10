@@ -21,7 +21,7 @@ export async function getPatterns(
   const params = new URLSearchParams();
   params.append('limit', String(pageSize));
   params.append('offset', String((page - 1) * pageSize));
-  if (type) params.append('pattern_type', type); // DÜZELTİLDİ
+  if (type) params.append('pattern_type', type);
   if (search) params.append('search', search);
   return apiFetch<PatternPage>(`/patterns?${params.toString()}`);
 }

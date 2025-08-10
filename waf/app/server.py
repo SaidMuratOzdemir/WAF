@@ -1,5 +1,3 @@
-# waf/waf.py
-
 import asyncio
 import logging
 import os
@@ -11,11 +9,12 @@ import redis.asyncio as redis
 from dotenv import load_dotenv
 
 from models import Site
-from database import init_database, fetch_sites_from_db
-from waf_logic import is_malicious_request, create_block_response
-from vt_cache import VirusTotalCache
-from analysis import fetch_patterns_from_db
-from request_logger import RequestLogger
+from waf.integration.db.connection import init_database
+from waf.integration.db.repository import fetch_sites_from_db
+from waf.checks.security_engine import is_malicious_request, create_block_response
+from waf.adapters.virustotal.cache import VirusTotalCache
+from waf.checks.patterns.pattern_store import fetch_patterns_from_db
+from waf.integration.logging.request_logger import RequestLogger
 
 load_dotenv()
 
@@ -105,11 +104,9 @@ class WAFManager:
         start_time = time.time()
         body = await request.read()
 
-        # restart endpoint
         if request.path == "/waf/restart":
             return await self.handle_restart(request)
 
-        # find site config
         host = request.headers.get("Host", "").split(":")[0].lower()
         site = request.app["hosts_config"].get(host)
         if not site:
@@ -120,7 +117,6 @@ class WAFManager:
         if not site:
             return web.Response(text="No site configuration found for this host.", status=404)
 
-        # log incoming request
         request_id = ""
         if self.request_logger:
             request_id = self.request_logger.log_request(request, site.name, body)
@@ -132,15 +128,12 @@ class WAFManager:
                     self.request_logger.log_blocked_request(request, site.name, reason, body)
                 return create_block_response(reason, request.remote or "unknown")
 
-            # websocket?
             if (request.headers.get("connection", "").lower() == "upgrade" and
                     request.headers.get("upgrade", "").lower() == "websocket"):
                 return await self.handle_websocket(request, site)
 
-            # proxy and collect response bytes
             response, resp_body = await self.proxy_http_request(request, site, body)
 
-            # log the response
             if self.request_logger and request_id:
                 elapsed = (time.time() - start_time) * 1000
                 self.request_logger.log_response(request_id, response, resp_body, elapsed)
@@ -181,7 +174,6 @@ class WAFManager:
                 if k not in excluded:
                     stream_resp.headers[k] = v
 
-            # add WAF metadata
             stream_resp.headers["X-WAF-Protected"] = "true"
             stream_resp.headers["X-WAF-Site"] = site.name
 
@@ -199,7 +191,7 @@ class WAFManager:
             except (ConnectionResetError, Exception):
                 try:
                     await stream_resp.write_eof()
-                except:
+                except:  # noqa: E722
                     pass
 
             return stream_resp, bytes(buffer)
@@ -230,7 +222,6 @@ class WAFManager:
         return ws_srv
 
     async def handle_restart(self, request: web.Request) -> web.Response:
-        """Handle restart request from API."""
         try:
             os.kill(os.getpid(), signal.SIGTERM)
             return web.Response(text="Restart initiated", status=200)
@@ -284,6 +275,7 @@ async def main():
         logger.exception("Fatal error in WAF Manager")
         sys.exit(1)
 
-
 if __name__ == "__main__":
     asyncio.run(main())
+
+

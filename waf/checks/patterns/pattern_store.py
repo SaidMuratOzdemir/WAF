@@ -1,20 +1,11 @@
-# waf/analysis.py
-
-import re
 import asyncio
 import logging
-import os
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select
 
-from models import MaliciousPattern, Site
-
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://waf:waf@localhost:5432/waf")
-engine = create_async_engine(DATABASE_URL, echo=False)
-async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+from models import Site
+from waf.integration.db.repository import fetch_all_patterns
 
 logger = logging.getLogger(__name__)
+
 PATTERN_CACHE = {"xss": [], "sql": [], "custom": []}
 PATTERN_CACHE_LAST = 0
 PATTERN_CACHE_TTL = 60
@@ -22,20 +13,16 @@ _pattern_lock = asyncio.Lock()
 
 
 async def fetch_patterns_from_db():
-    """
-    Loads malicious patterns from the database and caches them as lowercase substrings
-    for direct containment checks (not regex).
-    """
+    """Load patterns via shared repository and refresh cache."""
     global PATTERN_CACHE, PATTERN_CACHE_LAST
-    async with async_session() as session:
-        result = await session.execute(select(MaliciousPattern))
-        patterns = result.scalars().all()
+    patterns = await fetch_all_patterns()
 
-    cache = {"xss": [], "sql": [], "custom": []}  # Standardize on 'sql' as the type
-
+    cache = {"xss": [], "sql": [], "custom": []}
     for p in patterns:
-        pattern_type = p.type.lower()
-        pattern_str = p.pattern.strip().lower()
+        pattern_type = (p.type or "").strip().lower()
+        pattern_str = (p.pattern or "").strip().lower()
+        if not pattern_type or not pattern_str:
+            continue
         cache.setdefault(pattern_type, []).append(pattern_str)
 
     PATTERN_CACHE = cache
@@ -43,17 +30,14 @@ async def fetch_patterns_from_db():
 
 
 async def _ensure_fresh():
-    # This async lock pattern is correct. No changes needed.
     now = asyncio.get_event_loop().time()
     if now - PATTERN_CACHE_LAST > PATTERN_CACHE_TTL:
         async with _pattern_lock:
-            # Double-check inside the lock
             if now - PATTERN_CACHE_LAST > PATTERN_CACHE_TTL:
                 await fetch_patterns_from_db()
 
 
 async def get_patterns():
-    # Correct.
     await _ensure_fresh()
     return PATTERN_CACHE
 
@@ -73,7 +57,6 @@ async def _is_malicious(content: str, types_to_check: list):
     return False, ""
 
 
-
 async def analyze_request_part(content: str, site: Site):
     if not content:
         return False, ""
@@ -82,8 +65,9 @@ async def analyze_request_part(content: str, site: Site):
     if site.xss_enabled:
         types_to_check.append("xss")
     if site.sql_enabled:
-        types_to_check.append("sql")  # Match the standardized type in the cache
-
-    types_to_check.append("custom")  # Always check for custom patterns
+        types_to_check.append("sql")
+    types_to_check.append("custom")
 
     return await _is_malicious(content, types_to_check)
+
+

@@ -1,14 +1,13 @@
-# ./waf/waf_logic.py
-
 import logging
 import os
 from typing import Tuple
 from aiohttp import web
 from models import Site
-from vt_cache import CachedVirusTotalClient
-from analysis import analyze_request_part
-from ip_utils import is_banned_ip, is_local_ip, is_whitelisted_ip
-from ban import ban_and_log
+from waf.adapters.virustotal.cached_client import CachedVirusTotalClient
+from waf.checks.patterns.pattern_store import analyze_request_part
+from waf.ip.banlist import is_banned_ip, is_whitelisted_ip
+from waf.ip.local import is_local_ip
+from waf.ip.ban_actions import ban_and_log
 
 logger = logging.getLogger(__name__)
 _vt_clients_cache: dict = {}
@@ -23,13 +22,9 @@ async def get_vt_client(ip: str) -> CachedVirusTotalClient:
 
 
 async def is_malicious_request(request: web.Request, site: Site, body_bytes: bytes) -> Tuple[bool, str]:
-    """
-    Orchestrates all security checks for a given request.
-    """
     client_ip = request.remote or "unknown"
     redis_client = request.app['waf_manager'].redis_client
 
-    # Whitelist precedence: if whitelisted, skip all checks and allow
     if redis_client and await is_whitelisted_ip(redis_client, client_ip):
         return False, ""
 
@@ -40,7 +35,8 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
         vt_client = await get_vt_client(client_ip)
         try:
             vt_result = await vt_client.check_ip()
-            if getattr(vt_result, 'is_malicious', False):
+            # Legacy compatibility: vt_result can be bool; getattr guard stays.
+            if (isinstance(vt_result, bool) and vt_result) or getattr(vt_result, 'is_malicious', False):
                 reason = "MALICIOUS_IP_VT"
                 if redis_client:
                     await ban_and_log(redis_client, client_ip, reason, request, body_bytes)
@@ -50,7 +46,6 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
 
     body_str = body_bytes.decode('utf-8', errors='ignore')
 
-    # Consolidate all parts of the request to be scanned.
     parts_to_check = {
         "BODY": body_str,
         "PATH": request.path,
@@ -58,7 +53,6 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
         **{f"HEADER_{k.upper()}": v for k, v in request.headers.items()}
     }
 
-    # Loop through each part and analyze it for threats.
     for location, content in parts_to_check.items():
         if not content:
             continue
@@ -67,11 +61,9 @@ async def is_malicious_request(request: web.Request, site: Site, body_bytes: byt
         if is_mal:
             reason = f"{attack_type}_IN_{location}"
             if redis_client:
-                # This is the call that triggers the ban and the detailed log entry.
                 await ban_and_log(redis_client, client_ip, reason, request, body_bytes)
             return True, reason
 
-    # If all checks pass, the request is clean.
     return False, ""
 
 
@@ -93,3 +85,5 @@ def create_block_response(attack_type: str, client_ip: str = "unknown") -> web.R
 """
     return web.Response(text=html, status=403, content_type="text/html",
                         headers={"X-WAF-Block-Reason": attack_type})
+
+

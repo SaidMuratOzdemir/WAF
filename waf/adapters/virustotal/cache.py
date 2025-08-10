@@ -1,4 +1,4 @@
-# vt_cache.py
+# vt adapters: cache
 
 import redis.asyncio as redis
 import json
@@ -8,10 +8,13 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from dataclasses import dataclass, asdict
-from client import Client
-from ip_utils import is_local_ip, set_ip_info, get_ip_info
+
+from waf.adapters.virustotal.sync_client import Client
+from waf.ip.local import is_local_ip
+from waf.ip.info_store import set_ip_info, get_ip_info
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass
 class IPCacheEntry:
@@ -24,8 +27,10 @@ class IPCacheEntry:
     cached_date: str  # YYYY-MM-DD
     timestamp: float
 
+
 class VirusTotalCache:
     """Redis-backed daily cache for VT IP results."""
+
     def __init__(self, redis_url: str = None):
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379")
         self.redis_client: Optional[redis.Redis] = None
@@ -130,80 +135,16 @@ class VirusTotalCache:
             logger.error(f"Error fetching VT cache stats: {e}")
         return stats
 
-class CachedVirusTotalClient:
-    """Wrap Client + VirusTotalCache + local-IP logic."""
 
-    def __init__(self, ip: str, redis_url: str = None):
-        self.ip = ip
-        self.vt_client = Client(ip)
-        self.cache = VirusTotalCache(redis_url)
-
-    async def init(self):
-        await self.cache.init_redis()
-
-    async def is_ip_malicious(self) -> bool:
-        # 1) cache
-        cached = await self.cache.get_cached_result(self.ip)
-        if cached:
-            return cached.is_malicious
-
-        # 2) local IP → mark clean
-        if is_local_ip(self.ip):
-            await self.cache.set_cache_result(self.ip, False, {
-                "reputation": 0, "threat_types": [], "detection_count": 0, "total_engines": 0
-            })
-            return False
-
-        # 3) real VirusTotal check
-        mal = self.vt_client.is_ip_malicious()
-        summary = self.vt_client.get_threat_summary()
-        await self.cache.set_cache_result(self.ip, mal, summary)
-        return mal
-
-    async def get_threat_summary(self) -> Dict[str, Any]:
-        # 1) cache
-        cached = await self.cache.get_cached_result(self.ip)
-        if cached:
-            return {
-                "ip": cached.ip,
-                "is_malicious": cached.is_malicious,
-                "reputation": cached.reputation,
-                "threat_types": cached.threat_types,
-                "detection_count": cached.detection_count,
-                "total_engines": cached.total_engines,
-                "cached": True,
-                "cached_date": cached.cached_date
-            }
-        # 2) local IP
-        if is_local_ip(self.ip):
-            return {
-                "ip": self.ip,
-                "is_malicious": False,
-                "reputation": 0,
-                "threat_types": [],
-                "detection_count": 0,
-                "total_engines": 0,
-                "cached": True,
-                "cached_date": "local_ip"
-            }
-        # 3) real API
-        summary = self.vt_client.get_threat_summary()
-        summary["cached"] = False
-        return summary
-
-    async def check_ip(self):
-        """is_ip_malicious ile aynı mantık, waf_logic ile uyumlu olması için eklenmiştir."""
-        return await self.is_ip_malicious()
-
-# daily cleanup runner
 async def cleanup_old_cache_task(redis_url: str = None):
     cache = VirusTotalCache(redis_url)
     await cache.init_redis()
     while True:
         now = datetime.now()
-        # next at 2AM
         nxt = now.replace(hour=2, minute=0, second=0, microsecond=0)
         if now.hour >= 2:
             nxt += timedelta(days=1)
         await asyncio.sleep((nxt - now).total_seconds())
         await cache.clean_old_cache()
+
+

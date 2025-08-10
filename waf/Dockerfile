@@ -14,8 +14,8 @@ RUN apt-get update && apt-get install -y \
 COPY ./waf/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# <<< FIX: Copy only the necessary files into the container
-COPY ./waf/ /app/
+# <<< FIX: Copy only the necessary files into the container under package root
+COPY ./waf/ /app/waf/
 COPY ./api/app/models.py /app/
 
 # Create non-root user
@@ -30,5 +30,5 @@ EXPOSE 80 8081 8082 8083 8084 8085
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import aiohttp; import asyncio; async def check(): async with aiohttp.ClientSession() as session: async with session.get('http://localhost:8081/waf/health') as response: assert response.status == 200; asyncio.run(check())" || exit 1
 
-# Run the WAF
-CMD ["python", "waf.py"]
+# Run the WAF (new entrypoint)
+CMD ["python", "-m", "waf.app.server"]

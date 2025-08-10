@@ -1,6 +1,6 @@
 from typing import Any, Dict
-from ip_utils import is_local_ip
-from vt_cache import CachedVirusTotalClient
+from waf.ip.local import is_local_ip
+from waf.adapters.virustotal.cached_client import CachedVirusTotalClient
 
 async def check_ip_with_virustotal(ip: str, redis_url: str = None) -> Dict[str, Any]:
     """IP'yi VirusTotal ile kontrol eder. Lokal ise False döner."""

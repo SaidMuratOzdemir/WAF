@@ -4,13 +4,13 @@ services:
   postgres:
     image: postgres:16
     environment:
-      - POSTGRES_DB= waf
-      - POSTGRES_USER= waf
-      - POSTGRES_PASSWORD= waf
+      - POSTGRES_DB=waf
+      - POSTGRES_USER=waf
+      - POSTGRES_PASSWORD=waf
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-        - "5432:5432"
+      - "5432:5432"
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U waf -d waf" ]
       interval: 5s
@@ -59,7 +59,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     ports:
-      - "8001:8001"
+      - "8002:8001"
     environment:
       - DATABASE_URL=postgresql+asyncpg://waf:waf@postgres:5432/waf
       - REDIS_URL=redis://redis:6379
@@ -97,6 +97,18 @@ services:
       - dvwa-net
       - juiceshop-net
       - hr-system-net
+    restart: unless-stopped
+
+  waf-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    networks:
+      - waf-core-net
+    depends_on:
+      - api
     restart: unless-stopped
 
 volumes:

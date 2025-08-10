@@ -94,7 +94,6 @@ services:
       - api
     networks:
       - waf-core-net
-      - dvwa-net
       - juiceshop-net
       - hr-system-net
     restart: unless-stopped
@@ -121,12 +120,6 @@ networks:
     ipam:
       config:
         - subnet: 10.99.0.0/24
-
-  dvwa-net:
-    external: true
-    ipam:
-      config:
-        - subnet: 10.99.1.0/24
 
   juiceshop-net:
     external: true
